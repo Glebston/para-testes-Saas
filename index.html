@@ -446,6 +446,11 @@
         let currentDashboardView = 'orders';
         let currentOrdersView = 'pending';
 
+        const SIZES_ORDER = [
+            'PP', 'P', 'M', 'G', 'GG', 'XG',
+            '2 anos', '4 anos', '6 anos', '8 anos', '10 anos', '12 anos'
+        ];
+
         const DOM = {
             authContainer: document.getElementById('authContainer'),
             loginForm: document.getElementById('loginForm'),
@@ -581,7 +586,7 @@
                 if (companySnap.exists() && companySnap.data().companyName) {
                     userCompanyName = companySnap.data().companyName;
                 } else {
-                    userCompanyName = user.email; // Fallback para o e-mail se o campo não existir
+                    userCompanyName = user.email; 
                 }
                 DOM.userEmail.textContent = userCompanyName;
                 
@@ -1385,6 +1390,16 @@
             document.getElementById('orderDate').value = new Date().toISOString().split('T')[0];
             updateFinancials();
         };
+
+        const sortSizes = (sizesObject) => {
+            return Object.entries(sizesObject).sort((a, b) => {
+                const indexA = SIZES_ORDER.indexOf(a[0]);
+                const indexB = SIZES_ORDER.indexOf(b[0]);
+                if (indexA === -1) return 1;
+                if (indexB === -1) return -1;
+                return indexA - indexB;
+            });
+        };
         
         const viewOrder = (orderId) => {
             const order = allOrders.find(o => o.id === orderId);
@@ -1397,7 +1412,7 @@
                 let itemsDetailHtml = '';
                 if (p.partInputType === 'comum' && p.sizes && Object.keys(p.sizes).length > 0) {
                     itemsDetailHtml = '<div class="text-xs text-gray-600 pl-2 mt-1">' + Object.entries(p.sizes).map(([cat, sizes]) =>
-                        `<strong>${cat}:</strong> ${Object.entries(sizes).map(([size, qty]) => `${size}(${qty})`).join(', ')}`
+                        `<strong>${cat}:</strong> ${sortSizes(sizes).map(([size, qty]) => `${size}(${qty})`).join(', ')}`
                     ).join('<br>') + '</div>';
                 } else if (p.partInputType === 'detalhado' && p.details && p.details.length > 0) {
                     itemsDetailHtml = '<div class="text-xs text-gray-600 pl-2 mt-1">' + p.details.map(d => `${d.name || ''} - ${d.size || ''} - ${d.number || ''}`).join('<br>') + '</div>';
