@@ -53,7 +53,7 @@
             <div class="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <div class="flex items-center">
                     <img src="https://i.ibb.co/BHq1HsPG/2-removebg-preview.png" alt="Logo" class="h-8 w-auto mr-3">
-                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos <span class="text-xs font-semibold bg-yellow-200 text-yellow-800 py-1 px-2 rounded-full align-middle">AMBIENTE DE TESTES</span></h1>
+                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos 1<span class="text-xs font-semibold bg-yellow-200 text-yellow-800 py-1 px-2 rounded-full align-middle">AMBIENTE DE TESTES</span></h1>
                 </div>
                 <div class="flex items-center gap-4">
                      <button id="priceTableBtn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-300 transition duration-300 flex items-center justify-center" title="Tabela de Preços">
@@ -982,22 +982,26 @@
         };
         
         const handleBackup = () => {
-            if (allOrders.length === 0) {
-                showInfoModal("Não há pedidos para fazer backup.");
+            if (allOrders.length === 0 && allTransactions.length === 0) {
+                showInfoModal("Não há dados para fazer backup.");
                 return;
             }
-            const dataStr = JSON.stringify(allOrders.map(({ id, ...rest }) => rest), null, 2);
+            const backupData = {
+                orders: allOrders.map(({ id, ...rest }) => rest),
+                transactions: allTransactions.map(({ id, ...rest }) => rest)
+            };
+            const dataStr = JSON.stringify(backupData, null, 2);
             const dataBlob = new Blob([dataStr], { type: 'application/json' });
             const url = URL.createObjectURL(dataBlob);
             const link = document.createElement('a');
             const date = new Date().toISOString().split('T')[0];
-            link.download = `backup-pedidos-${date}.json`;
+            link.download = `backup-completo-${date}.json`;
             link.href = url;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            showInfoModal("Backup gerado com sucesso!");
+            showInfoModal("Backup completo gerado com sucesso!");
             localStorage.setItem(`backupTimestamp_${userCompanyId}`, Date.now());
         };
 
@@ -1007,63 +1011,80 @@
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
-                    const ordersFromFile = JSON.parse(e.target.result);
-                    if (!Array.isArray(ordersFromFile)) throw new Error("Formato inválido.");
-                    await processRestore(ordersFromFile);
+                    const dataFromFile = JSON.parse(e.target.result);
+                    let backupObject;
+
+                    if (Array.isArray(dataFromFile)) { // Old format
+                        backupObject = { orders: dataFromFile, transactions: [] };
+                    } else if (dataFromFile.orders && dataFromFile.transactions) { // New format
+                        backupObject = dataFromFile;
+                    } else {
+                        throw new Error("Formato de arquivo inválido.");
+                    }
+
+                    if (!Array.isArray(backupObject.orders) || !Array.isArray(backupObject.transactions)) {
+                         throw new Error("Conteúdo do arquivo de backup inválido.");
+                    }
+                    
+                    await processRestore(backupObject);
+
                 } catch (error) {
-                    showInfoModal("Arquivo de backup inválido.");
+                    console.error("Erro ao processar backup:", error);
+                    showInfoModal(`Arquivo de backup inválido: ${error.message}`);
                 }
             };
             reader.readAsText(file);
             event.target.value = '';
         };
 
-        const processRestore = async (ordersFromFile) => {
+        const processRestore = async (backupObject) => {
             const choice = await showConfirmModal("Escolha o modo de importação:", "Adicionar", "Substituir");
             if (choice === null) return;
-            if (choice) {
+
+            if (choice) { // Add
                 const batch = writeBatch(db);
-                ordersFromFile.forEach(order => {
-                    const newDocRef = doc(collection(db, `companies/${userCompanyId}/orders`));
+                (backupObject.orders || []).forEach(order => {
+                    const newDocRef = doc(dbCollection);
                     batch.set(newDocRef, order);
                 });
+                (backupObject.transactions || []).forEach(transaction => {
+                    const newDocRef = doc(transactionsCollection);
+                    batch.set(newDocRef, transaction);
+                });
                 await batch.commit();
-                showInfoModal(`${ordersFromFile.length} pedidos foram ADICIONADOS.`);
-            } else {
+                showInfoModal(`${(backupObject.orders || []).length} pedidos e ${(backupObject.transactions || []).length} lançamentos foram ADICIONADOS.`);
+            } else { // Replace
                 const confirmReplace = await showConfirmModal(
-                    "ATENÇÃO: Isto vai APAGAR TODOS os seus pedidos atuais. A ação NÃO PODE SER DESFEITA. Continuar?",
-                    "Sim, substituir",
+                    "ATENÇÃO: Isto vai APAGAR TODOS os seus pedidos e lançamentos financeiros atuais. A ação NÃO PODE SER DESFEITA. Continuar?",
+                    "Sim, substituir tudo",
                     "Cancelar"
                 );
                 if (confirmReplace) {
-                    const allDocsQuery = query(collection(db, `companies/${userCompanyId}/orders`));
-                    const allDocsSnap = await getDocs(allDocsQuery);
-                    const deleteBatch = writeBatch(db);
-                    allDocsSnap.forEach(docSnap => deleteBatch.delete(docSnap.ref));
-                    await deleteBatch.commit();
+                    // Delete all existing data
+                    const collectionsToDelete = [dbCollection, transactionsCollection];
+                    for (const collRef of collectionsToDelete) {
+                        const snapshot = await getDocs(query(collRef));
+                        const deleteBatch = writeBatch(db);
+                        snapshot.forEach(docSnap => deleteBatch.delete(docSnap.ref));
+                        await deleteBatch.commit();
+                    }
 
+                    // Add new data
                     const addBatch = writeBatch(db);
-                    ordersFromFile.forEach(order => addBatch.set(doc(collection(db, `companies/${userCompanyId}/orders`)), order));
+                    (backupObject.orders || []).forEach(order => {
+                        const newDocRef = doc(dbCollection);
+                        addBatch.set(newDocRef, order);
+                    });
+                    (backupObject.transactions || []).forEach(transaction => {
+                        const newDocRef = doc(transactionsCollection);
+                        addBatch.set(newDocRef, transaction);
+                    });
                     await addBatch.commit();
-                    showInfoModal(`Pedidos substituídos. ${ordersFromFile.length} novos pedidos importados.`);
+                    showInfoModal(`Dados substituídos. ${(backupObject.orders || []).length} pedidos e ${(backupObject.transactions || []).length} lançamentos importados.`);
                 }
             }
         };
 
-        const updateFinancials = () => {
-            let grandTotal = 0;
-            DOM.financialsContainer.querySelectorAll('.financial-item').forEach(item => {
-                const quantity = parseFloat(item.querySelector('.financial-quantity').value) || 0;
-                const price = parseFloat(item.querySelector('.financial-price').value) || 0;
-                const subtotal = quantity * price;
-                item.querySelector('.financial-subtotal').textContent = `R$ ${subtotal.toFixed(2)}`;
-                grandTotal += subtotal;
-            });
-            const downPayment = parseFloat(DOM.downPayment.value) || 0;
-            DOM.grandTotal.textContent = `R$ ${grandTotal.toFixed(2)}`;
-            DOM.remainingTotal.textContent = `R$ ${(grandTotal - downPayment).toFixed(2)}`;
-        };
-        
         const fileToBase64 = (file) => new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);
@@ -1409,7 +1430,6 @@
 
             (orderData.parts || []).forEach(addPart);
             
-            // Populate prices after financial rows are rendered
             DOM.financialsContainer.querySelectorAll('.financial-item').forEach(finRow => {
                 const partId = finRow.dataset.partId;
                 const priceGroup = finRow.dataset.priceGroup;
@@ -1417,9 +1437,9 @@
                 if (!part) return;
 
                 if (priceGroup === 'standard') {
-                    finRow.querySelector('.financial-price').value = part.unitPriceStandard || part.unitPrice || '';
+                    finRow.querySelector('.financial-price').value = part.unitPriceStandard !== undefined ? part.unitPriceStandard : part.unitPrice || '';
                 } else if (priceGroup === 'specific') {
-                    finRow.querySelector('.financial-price').value = part.unitPriceSpecific || part.unitPrice || '';
+                    finRow.querySelector('.financial-price').value = part.unitPriceSpecific !== undefined ? part.unitPriceSpecific : part.unitPrice || '';
                 } else if (priceGroup === 'detailed') {
                     finRow.querySelector('.financial-price').value = part.unitPrice || '';
                 }
@@ -1507,8 +1527,11 @@
                 const specificQty = (p.specifics || []).length;
                 const detailedQty = (p.details || []).length;
 
-                const standardSub = standardQty * (p.unitPriceStandard !== undefined ? p.unitPriceStandard : p.unitPrice || 0);
-                const specificSub = specificQty * (p.unitPriceSpecific !== undefined ? p.unitPriceSpecific : p.unitPrice || 0);
+                const unitPriceStandard = p.unitPriceStandard !== undefined ? p.unitPriceStandard : p.unitPrice || 0;
+                const unitPriceSpecific = p.unitPriceSpecific !== undefined ? p.unitPriceSpecific : p.unitPrice || 0;
+
+                const standardSub = standardQty * unitPriceStandard;
+                const specificSub = specificQty * unitPriceSpecific;
                 const detailedSub = detailedQty * (p.unitPrice || 0);
 
                 const subtotal = standardSub + specificSub + detailedSub;
@@ -1541,8 +1564,8 @@
 
                 let unitPriceHtml = '';
                 if(p.partInputType === 'comum') {
-                    if(standardQty > 0) unitPriceHtml += `R$ ${(p.unitPriceStandard !== undefined ? p.unitPriceStandard : p.unitPrice || 0).toFixed(2)} (Padrão)<br>`;
-                    if(specificQty > 0) unitPriceHtml += `R$ ${(p.unitPriceSpecific !== undefined ? p.unitPriceSpecific : p.unitPrice || 0).toFixed(2)} (Específico)`;
+                    if(standardQty > 0) unitPriceHtml += `R$ ${unitPriceStandard.toFixed(2)} (Padrão)<br>`;
+                    if(specificQty > 0) unitPriceHtml += `R$ ${unitPriceSpecific.toFixed(2)} (Específico)`;
                 } else {
                     unitPriceHtml = `R$ ${(p.unitPrice || 0).toFixed(2)}`;
                 }
@@ -2043,7 +2066,7 @@
             if (!order) return;
             
             if (btn.classList.contains('edit-btn')) editOrder(order);
-            if (btn.classList.contains('replicate-btn')) replicateOrder(order);
+            if (btn.classList.contains('replicate-btn')) replicateOrder(order.id);
             if (btn.classList.contains('delete-btn')) deleteOrder(id);
             if (btn.classList.contains('view-btn')) viewOrder(id);
         });
