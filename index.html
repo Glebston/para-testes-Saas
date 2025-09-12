@@ -53,13 +53,13 @@
             <div class="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <div class="flex items-center">
                     <img src="https://i.ibb.co/BHq1HsPG/2-removebg-preview.png" alt="Logo" class="h-8 w-auto mr-3">
-                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos <span class="text-xs font-semibold bg-yellow-200 text-yellow-800 py-1 px-2 rounded-full align-middle">AMBIENTE DE TESTES</span></h1>
+                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos 2<span class="text-xs font-semibold bg-yellow-200 text-yellow-800 py-1 px-2 rounded-full align-middle">AMBIENTE DE TESTES</span></h1>
                 </div>
                 <div class="flex items-center gap-4">
                      <button id="priceTableBtn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-300 transition duration-300 flex items-center justify-center" title="Tabela de Preços">
-                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                            <path fill-rule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a1 1 0 011-1h5a1 1 0 01.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
-                         </svg>
+                          </svg>
                      </button>
                     <button id="addOrderBtn" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-blue-700 transition duration-300 flex items-center justify-center">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
@@ -986,13 +986,13 @@
                 showInfoModal("Não há dados para fazer backup.");
                 return;
             }
-            const dataToSave = {
+            
+            const backupData = {
                 orders: allOrders.map(({ id, ...rest }) => rest),
-                transactions: allTransactions
-                    .filter(t => t && typeof t === 'object') // CORREÇÃO: Garante que apenas objetos válidos sejam processados
-                    .map(({ id, ...rest }) => rest)
+                transactions: allTransactions.map(({ id, ...rest }) => rest)
             };
-            const dataStr = JSON.stringify(dataToSave, null, 2);
+            
+            const dataStr = JSON.stringify(backupData, null, 2);
             const dataBlob = new Blob([dataStr], { type: 'application/json' });
             const url = URL.createObjectURL(dataBlob);
             const link = document.createElement('a');
@@ -1014,81 +1014,108 @@
             reader.onload = async (e) => {
                 try {
                     const dataFromFile = JSON.parse(e.target.result);
-                    let backupObject;
+                    let ordersToRestore = [];
+                    let transactionsToRestore = [];
 
-                    if (Array.isArray(dataFromFile)) { // Old format
-                        backupObject = { orders: dataFromFile, transactions: [] };
-                    } else if (dataFromFile.orders && dataFromFile.transactions) { // New format
-                        backupObject = dataFromFile;
+                    // Retro-compatibility check
+                    if (Array.isArray(dataFromFile)) { // Old format (just an array of orders)
+                        ordersToRestore = dataFromFile;
+                        showInfoModal("Backup de formato antigo detectado. Apenas os pedidos serão restaurados.");
+                    } else if (typeof dataFromFile === 'object' && dataFromFile.orders) { // New format
+                        ordersToRestore = dataFromFile.orders || [];
+                        transactionsToRestore = dataFromFile.transactions || [];
                     } else {
-                        throw new Error("Formato de arquivo inválido.");
-                    }
-
-                    if (!Array.isArray(backupObject.orders) || !Array.isArray(backupObject.transactions)) {
-                         throw new Error("Conteúdo do arquivo de backup inválido.");
+                        throw new Error("Formato de arquivo de backup inválido.");
                     }
                     
-                    await processRestore(backupObject);
+                    if (!Array.isArray(ordersToRestore) || !Array.isArray(transactionsToRestore)) {
+                         throw new Error("Dados de backup corrompidos.");
+                    }
 
+                    await processRestore(ordersToRestore, transactionsToRestore);
                 } catch (error) {
-                    console.error("Erro ao processar backup:", error);
-                    showInfoModal(`Arquivo de backup inválido: ${error.message}`);
+                    console.error("Erro na restauração:", error);
+                    showInfoModal("Arquivo de backup inválido ou corrompido.");
                 }
             };
             reader.readAsText(file);
-            event.target.value = '';
+            event.target.value = ''; // Reset input to allow re-uploading the same file
         };
 
-        const processRestore = async (backupObject) => {
-            const choice = await showConfirmModal("Escolha o modo de importação:", "Adicionar", "Substituir");
-            if (choice === null) return;
+        const processRestore = async (ordersToRestore, transactionsToRestore) => {
+            const choice = await showConfirmModal("Escolha o modo de importação:", "Adicionar aos existentes", "Substituir tudo");
+            if (choice === null) return; // User cancelled
 
-            if (choice) { // Add
+            if (choice) { // ADICIONAR
                 const batch = writeBatch(db);
-                (backupObject.orders || []).forEach(order => {
-                    const newDocRef = doc(dbCollection);
+                ordersToRestore.forEach(order => {
+                    const newDocRef = doc(dbCollection); // dbCollection is orders
                     batch.set(newDocRef, order);
                 });
-                (backupObject.transactions || []).forEach(transaction => {
+                transactionsToRestore.forEach(transaction => {
                     const newDocRef = doc(transactionsCollection);
                     batch.set(newDocRef, transaction);
                 });
                 await batch.commit();
-                showInfoModal(`${(backupObject.orders || []).length} pedidos e ${(backupObject.transactions || []).length} lançamentos foram ADICIONADOS.`);
-            } else { // Replace
+                showInfoModal(`${ordersToRestore.length} pedido(s) e ${transactionsToRestore.length} lançamento(s) foram ADICIONADOS.`);
+            } else { // SUBSTITUIR
                 const confirmReplace = await showConfirmModal(
-                    "ATENÇÃO: Isto vai APAGAR TODOS os seus pedidos e lançamentos financeiros atuais. A ação NÃO PODE SER DESFEITA. Continuar?",
+                    "ATENÇÃO: Isto vai APAGAR TODOS os seus pedidos E lançamentos financeiros atuais. A ação NÃO PODE SER DESFEITA. Continuar?",
                     "Sim, substituir tudo",
                     "Cancelar"
                 );
                 if (confirmReplace) {
-                    // Delete all existing data
-                    const collectionsToDelete = [dbCollection, transactionsCollection];
-                    for (const collRef of collectionsToDelete) {
-                        const snapshot = await getDocs(query(collRef));
-                        const deleteBatch = writeBatch(db);
-                        snapshot.forEach(docSnap => deleteBatch.delete(docSnap.ref));
-                        if (!snapshot.empty) await deleteBatch.commit();
+                    // --- Deletion Phase ---
+                    const deleteBatch = writeBatch(db);
+                    const allOrdersQuery = query(dbCollection);
+                    const allTransactionsQuery = query(transactionsCollection);
+                    
+                    const [ordersSnap, transactionsSnap] = await Promise.all([
+                        getDocs(allOrdersQuery),
+                        getDocs(allTransactionsQuery)
+                    ]);
+
+                    ordersSnap.forEach(docSnap => deleteBatch.delete(docSnap.ref));
+                    transactionsSnap.forEach(docSnap => deleteBatch.delete(docSnap.ref));
+                    
+                    if(ordersSnap.size > 0 || transactionsSnap.size > 0) {
+                        await deleteBatch.commit();
                     }
 
-                    // Add new data
+                    // --- Addition Phase ---
                     const addBatch = writeBatch(db);
-                    (backupObject.orders || []).forEach(order => {
+                    ordersToRestore.forEach(order => {
                         const newDocRef = doc(dbCollection);
                         addBatch.set(newDocRef, order);
                     });
-                    (backupObject.transactions || []).forEach(transaction => {
+                    transactionsToRestore.forEach(transaction => {
                         const newDocRef = doc(transactionsCollection);
                         addBatch.set(newDocRef, transaction);
                     });
-                    if ((backupObject.orders || []).length > 0 || (backupObject.transactions || []).length > 0) {
+
+                    if (ordersToRestore.length > 0 || transactionsToRestore.length > 0) {
                         await addBatch.commit();
                     }
-                    showInfoModal(`Dados substituídos. ${(backupObject.orders || []).length} pedidos e ${(backupObject.transactions || []).length} lançamentos importados.`);
+                    
+                    showInfoModal(`Dados substituídos. ${ordersToRestore.length} pedido(s) e ${transactionsToRestore.length} lançamento(s) importados.`);
                 }
             }
         };
 
+        const updateFinancials = () => {
+            let grandTotal = 0;
+            DOM.financialsContainer.querySelectorAll('.financial-item').forEach(item => {
+                const quantity = parseFloat(item.querySelector('.financial-quantity').value) || 0;
+                const price = parseFloat(item.querySelector('.financial-price').value) || 0;
+                const subtotal = quantity * price;
+                item.querySelector('.financial-subtotal').textContent = `R$ ${subtotal.toFixed(2)}`;
+                grandTotal += subtotal;
+            });
+            const downPayment = parseFloat(DOM.downPayment.value) || 0;
+            DOM.grandTotal.textContent = `R$ ${grandTotal.toFixed(2)}`;
+            DOM.remainingTotal.textContent = `R$ ${(grandTotal - downPayment).toFixed(2)}`;
+        };
+        
         const fileToBase64 = (file) => new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);
@@ -1271,8 +1298,10 @@
                     }
                 } else { // detalhado
                     const totalQty = partItem.querySelectorAll('.detailed-item-row').length;
-                    const finRow = createFinancialRow(partId, partName, totalQty, 'detailed');
-                    DOM.financialsContainer.appendChild(finRow);
+                    if (totalQty > 0) {
+                       const finRow = createFinancialRow(partId, partName, totalQty, 'detailed');
+                       DOM.financialsContainer.appendChild(finRow);
+                    }
                 }
             });
             updateFinancials();
@@ -1432,6 +1461,7 @@
 
             (orderData.parts || []).forEach(addPart);
             
+            // Populate prices after financial rows are rendered
             DOM.financialsContainer.querySelectorAll('.financial-item').forEach(finRow => {
                 const partId = finRow.dataset.partId;
                 const priceGroup = finRow.dataset.priceGroup;
@@ -1439,9 +1469,9 @@
                 if (!part) return;
 
                 if (priceGroup === 'standard') {
-                    finRow.querySelector('.financial-price').value = part.unitPriceStandard !== undefined ? part.unitPriceStandard : part.unitPrice || '';
+                    finRow.querySelector('.financial-price').value = part.unitPriceStandard || part.unitPrice || '';
                 } else if (priceGroup === 'specific') {
-                    finRow.querySelector('.financial-price').value = part.unitPriceSpecific !== undefined ? part.unitPriceSpecific : part.unitPrice || '';
+                    finRow.querySelector('.financial-price').value = part.unitPriceSpecific || part.unitPrice || '';
                 } else if (priceGroup === 'detailed') {
                     finRow.querySelector('.financial-price').value = part.unitPrice || '';
                 }
@@ -1529,11 +1559,8 @@
                 const specificQty = (p.specifics || []).length;
                 const detailedQty = (p.details || []).length;
 
-                const unitPriceStandard = p.unitPriceStandard !== undefined ? p.unitPriceStandard : p.unitPrice || 0;
-                const unitPriceSpecific = p.unitPriceSpecific !== undefined ? p.unitPriceSpecific : p.unitPrice || 0;
-
-                const standardSub = standardQty * unitPriceStandard;
-                const specificSub = specificQty * unitPriceSpecific;
+                const standardSub = standardQty * (p.unitPriceStandard !== undefined ? p.unitPriceStandard : p.unitPrice || 0);
+                const specificSub = specificQty * (p.unitPriceSpecific !== undefined ? p.unitPriceSpecific : p.unitPrice || 0);
                 const detailedSub = detailedQty * (p.unitPrice || 0);
 
                 const subtotal = standardSub + specificSub + detailedSub;
@@ -1545,8 +1572,8 @@
                     let standardSizesHtml = '';
                     if (p.sizes && Object.keys(p.sizes).length > 0) {
                          standardSizesHtml = Object.entries(p.sizes).map(([cat, sizes]) =>
-                            `<strong>${cat}:</strong> ${sortSizes(sizes).map(([size, qty]) => `${size}(${qty})`).join(', ')}`
-                        ).join('<br>');
+                             `<strong>${cat}:</strong> ${sortSizes(sizes).map(([size, qty]) => `${size}(${qty})`).join(', ')}`
+                         ).join('<br>');
                     }
                     
                     let specificSizesHtml = '';
@@ -1566,8 +1593,8 @@
 
                 let unitPriceHtml = '';
                 if(p.partInputType === 'comum') {
-                    if(standardQty > 0) unitPriceHtml += `R$ ${unitPriceStandard.toFixed(2)} (Padrão)<br>`;
-                    if(specificQty > 0) unitPriceHtml += `R$ ${unitPriceSpecific.toFixed(2)} (Específico)`;
+                    if(standardQty > 0) unitPriceHtml += `R$ ${(p.unitPriceStandard !== undefined ? p.unitPriceStandard : p.unitPrice || 0).toFixed(2)} (Padrão)<br>`;
+                    if(specificQty > 0) unitPriceHtml += `R$ ${(p.unitPriceSpecific !== undefined ? p.unitPriceSpecific : p.unitPrice || 0).toFixed(2)} (Específico)`;
                 } else {
                     unitPriceHtml = `R$ ${(p.unitPrice || 0).toFixed(2)}`;
                 }
@@ -1950,15 +1977,15 @@
 
         const markTransactionAsPaid = async (id) => {
              const transactionRef = doc(transactionsCollection, id);
-                try {
-                    await updateDoc(transactionRef, {
-                        status: 'pago',
-                        date: new Date().toISOString().split('T')[0]
-                    });
-                } catch(error) {
-                    console.error("Erro ao marcar como recebido:", error);
-                    showInfoModal("Não foi possível atualizar o lançamento.");
-                }
+                 try {
+                     await updateDoc(transactionRef, {
+                         status: 'pago',
+                         date: new Date().toISOString().split('T')[0]
+                     });
+                 } catch(error) {
+                     console.error("Erro ao marcar como recebido:", error);
+                     showInfoModal("Não foi possível atualizar o lançamento.");
+                 }
         };
         
         const checkBackupReminder = () => {
@@ -2068,7 +2095,7 @@
             if (!order) return;
             
             if (btn.classList.contains('edit-btn')) editOrder(order);
-            if (btn.classList.contains('replicate-btn')) replicateOrder(order.id);
+            if (btn.classList.contains('replicate-btn')) replicateOrder(id);
             if (btn.classList.contains('delete-btn')) deleteOrder(id);
             if (btn.classList.contains('view-btn')) viewOrder(id);
         });
