@@ -53,7 +53,7 @@
             <div class="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <div class="flex items-center">
                     <img src="https://i.ibb.co/BHq1HsPG/2-removebg-preview.png" alt="Logo" class="h-8 w-auto mr-3">
-                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos 26<span class="text-xs font-semibold bg-yellow-200 text-yellow-800 py-1 px-2 rounded-full align-middle">AMBIENTE DE TESTES</span></h1>
+                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos <span class="text-xs font-semibold bg-yellow-200 text-yellow-800 py-1 px-2 rounded-full align-middle">AMBIENTE DE TESTES</span></h1>
                 </div>
                 <div class="flex items-center gap-4">
                      <button id="priceTableBtn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-300 transition duration-300 flex items-center justify-center" title="Tabela de Preços">
@@ -392,7 +392,10 @@
     </template>
     <template id="financialRowTemplate">
         <div class="financial-item grid grid-cols-4 gap-4 items-end">
-            <p class="font-semibold financial-part-name col-span-1 self-center">Peça 1</p>
+            <div class="font-semibold financial-part-name col-span-1 self-center">
+                <span>Peça 1</span>
+                <span class="block text-xs font-normal text-gray-500 price-group-label"></span>
+            </div>
             <div>
                 <label class="text-xs font-semibold text-gray-600">Quantidade</label>
                 <input type="number" class="p-2 border rounded-md w-full bg-gray-100 financial-quantity" readonly>
@@ -926,7 +929,11 @@
         const generateOrderCardHTML = (order, viewType) => {
             let totalValue = 0;
             (order.parts || []).forEach(p => {
-                totalValue += (p.quantity || 0) * (p.unitPrice || 0);
+                 const standardQty = Object.values(p.sizes || {}).flatMap(cat => Object.values(cat)).reduce((s, c) => s + c, 0);
+                 const specificQty = (p.specifics || []).length;
+                 const standardSub = standardQty * (p.unitPriceStandard || p.unitPrice || 0);
+                 const specificSub = specificQty * (p.unitPriceSpecific || p.unitPrice || 0);
+                 totalValue += standardSub + specificSub;
             });
             const countdown = getDeliveryCountdown(order.deliveryDate);
             const countdownColorClasses = {
@@ -1057,26 +1064,6 @@
             DOM.remainingTotal.textContent = `R$ ${(grandTotal - downPayment).toFixed(2)}`;
         };
         
-        const updatePartQuantity = (partId, partElement) => {
-            if (!partElement) return;
-            let totalQuantity = 0;
-            const partType = partElement.dataset.partType;
-
-            if (partType === 'comum') {
-                partElement.querySelectorAll('.size-input').forEach(input => {
-                    totalQuantity += parseInt(input.value) || 0;
-                });
-                totalQuantity += partElement.querySelectorAll('.specific-size-row').length;
-            } else {
-                totalQuantity = partElement.querySelectorAll('.detailed-item-row').length;
-            }
-            const financialRow = DOM.financialsContainer.querySelector(`.financial-item[data-part-id="${partId}"]`);
-            if (financialRow) {
-                financialRow.querySelector('.financial-quantity').value = totalQuantity;
-            }
-            updateFinancials();
-        };
-
         const fileToBase64 = (file) => new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);
@@ -1108,28 +1095,21 @@
             partItem.dataset.partId = partCounter;
             partItem.dataset.partType = partData.partInputType || 'comum';
             
-            partItem.querySelector('.part-type').value = partData.type || '';
+            const partTypeInput = partItem.querySelector('.part-type');
+            partTypeInput.value = partData.type || '';
             partItem.querySelector('.part-material').value = partData.material || '';
             partItem.querySelector('.part-color-main').value = partData.colorMain || '';
+            
+            partTypeInput.addEventListener('input', renderFinancialSection);
             
             addContentToPart(partItem, partData);
             DOM.partsContainer.appendChild(partItem);
             
-            const finTpl = document.getElementById('financialRowTemplate').content.cloneNode(true);
-            const finItem = finTpl.querySelector('.financial-item');
-            finItem.dataset.partId = partCounter;
-            finItem.querySelector('.financial-part-name').textContent = partData.type || `Peça ${partCounter}`;
-            finItem.querySelector('.financial-price').value = partData.unitPrice || '';
-            finItem.querySelector('.financial-price').addEventListener('input', updateFinancials);
-            DOM.financialsContainer.appendChild(finItem);
+            renderFinancialSection();
             
-            partItem.querySelector('.part-type').addEventListener('input', (e) => {
-                finItem.querySelector('.financial-part-name').textContent = e.target.value || `Peça ${partCounter}`;
-            });
             partItem.querySelector('.remove-part-btn').addEventListener('click', () => {
                 partItem.remove();
-                finItem.remove();
-                updateFinancials();
+                renderFinancialSection();
             });
             partItem.querySelectorAll('.manage-options-btn').forEach(btn => btn.addEventListener('click', (e) => openOptionsModal(e.target.dataset.type)));
             partItem.querySelectorAll('.part-type-selector').forEach(btn => {
@@ -1137,13 +1117,9 @@
                     const newType = e.target.dataset.type;
                     partItem.dataset.partType = newType;
                     addContentToPart(partItem, {}); 
-                    updatePartQuantity(partCounter, partItem);
+                    renderFinancialSection();
                 });
             });
-
-            if (partData.sizes || partData.details || partData.specifics) {
-                updatePartQuantity(partCounter, partItem);
-            }
         };
 
         const addContentToPart = (partItem, partData = {}) => {
@@ -1159,7 +1135,6 @@
             if (partType === 'comum') {
                 const comumTpl = document.getElementById('comumPartContentTemplate').content.cloneNode(true);
                 
-                // Preenche a grade de tamanhos padrão
                 const sizesGrid = comumTpl.querySelector('.sizes-grid');
                 const categories = {
                     'Baby Look': ['PP', 'P', 'M', 'G', 'GG', 'XG'],
@@ -1181,7 +1156,6 @@
                 }
                 sizesGrid.innerHTML = gridHtml;
                 
-                // Adiciona listeners para a nova seção de tamanhos específicos
                 const specificList = comumTpl.querySelector('.specific-sizes-list');
                 const addSpecificRow = (spec = {}) => {
                     const specTpl = document.getElementById('specificSizeRowTemplate').content.cloneNode(true);
@@ -1190,7 +1164,7 @@
                     specTpl.querySelector('.item-spec-obs').value = spec.observation || '';
                     specTpl.querySelector('.remove-specific-row-btn').addEventListener('click', (e) => {
                         e.target.closest('.specific-size-row').remove();
-                        updatePartQuantity(partId, partItem);
+                        renderFinancialSection();
                     });
                     specificList.appendChild(specTpl);
                 };
@@ -1199,11 +1173,11 @@
 
                 comumTpl.querySelector('.add-specific-size-btn').addEventListener('click', () => {
                     addSpecificRow();
-                    updatePartQuantity(partId, partItem);
+                    renderFinancialSection();
                 });
 
                 comumTpl.querySelector('.toggle-sizes-btn').addEventListener('click', (e) => e.target.nextElementSibling.classList.toggle('hidden'));
-                sizesGrid.addEventListener('input', () => updatePartQuantity(partId, partItem));
+                sizesGrid.addEventListener('input', renderFinancialSection);
                 contentContainer.appendChild(comumTpl);
 
             } else { // Modo 'detalhado'
@@ -1219,17 +1193,66 @@
                         <div class="col-span-1 flex justify-center"><button type="button" class="remove-detailed-row text-red-500 font-bold">&times;</button></div>`;
                     row.querySelector('.remove-detailed-row').addEventListener('click', () => {
                         row.remove();
-                        updatePartQuantity(partId, partItem);
+                        renderFinancialSection();
                     });
                     listContainer.appendChild(row);
                 };
                 (partData.details || [{}]).forEach(addRow);
                 detalhadoTpl.querySelector('.add-detailed-row-btn').addEventListener('click', () => {
                     addRow();
-                    updatePartQuantity(partId, partItem);
+                    renderFinancialSection();
                 });
                 contentContainer.appendChild(detalhadoTpl);
             }
+        };
+
+        const createFinancialRow = (partId, name, quantity, priceGroup) => {
+            const finTpl = document.getElementById('financialRowTemplate').content.cloneNode(true);
+            const finItem = finTpl.querySelector('.financial-item');
+            finItem.dataset.partId = partId;
+            finItem.dataset.priceGroup = priceGroup;
+
+            finItem.querySelector('.financial-part-name > span:first-child').textContent = name;
+            const label = priceGroup === 'standard' ? '(Padrão)' : priceGroup === 'specific' ? '(Específico)' : '';
+            finItem.querySelector('.price-group-label').textContent = label;
+
+            finItem.querySelector('.financial-quantity').value = quantity;
+            finItem.querySelector('.financial-price').addEventListener('input', updateFinancials);
+
+            return finItem;
+        };
+
+        const renderFinancialSection = () => {
+            DOM.financialsContainer.innerHTML = '';
+            DOM.partsContainer.querySelectorAll('.part-item').forEach(partItem => {
+                const partId = partItem.dataset.partId;
+                const partName = partItem.querySelector('.part-type').value || `Peça ${partId}`;
+                const partType = partItem.dataset.partType;
+
+                if (partType === 'comum') {
+                    let standardQty = 0;
+                    partItem.querySelectorAll('.size-input').forEach(input => {
+                        standardQty += parseInt(input.value) || 0;
+                    });
+                    const specificQty = partItem.querySelectorAll('.specific-size-row').length;
+
+                    if (standardQty > 0) {
+                        const finRow = createFinancialRow(partId, partName, standardQty, 'standard');
+                        DOM.financialsContainer.appendChild(finRow);
+                    }
+                    if (specificQty > 0) {
+                        const finRow = createFinancialRow(partId, partName, specificQty, 'specific');
+                        DOM.financialsContainer.appendChild(finRow);
+                    }
+                } else { // detalhado
+                    const totalQty = partItem.querySelectorAll('.detailed-item-row').length;
+                    if (totalQty > 0) {
+                       const finRow = createFinancialRow(partId, partName, totalQty, 'detailed');
+                       DOM.financialsContainer.appendChild(finRow);
+                    }
+                }
+            });
+            updateFinancials();
         };
 
         const collectFormData = () => {
@@ -1245,19 +1268,20 @@
                 paymentMethod: document.getElementById('paymentMethod').value,
                 mockupUrls: Array.from(document.getElementById('existingFilesContainer').querySelectorAll('a')).map(a => a.href)
             };
+            
             DOM.partsContainer.querySelectorAll('.part-item').forEach(pItem => {
                 const partId = pItem.dataset.partId;
-                const finRow = DOM.financialsContainer.querySelector(`.financial-item[data-part-id="${partId}"]`);
                 const part = {
                     type: pItem.querySelector('.part-type').value,
                     material: pItem.querySelector('.part-material').value,
                     colorMain: pItem.querySelector('.part-color-main').value,
-                    quantity: parseInt(finRow.querySelector('.financial-quantity').value) || 0,
-                    unitPrice: parseFloat(finRow.querySelector('.financial-price').value) || 0,
                     partInputType: pItem.dataset.partType,
                     sizes: {},
                     details: [],
-                    specifics: []
+                    specifics: [],
+                    unitPriceStandard: 0,
+                    unitPriceSpecific: 0,
+                    unitPrice: 0 // For detailed type and backward compatibility
                 };
 
                 if (part.partInputType === 'comum') {
@@ -1276,8 +1300,13 @@
                            part.specifics.push({ width, height, observation });
                         }
                     });
+                    const standardPriceRow = DOM.financialsContainer.querySelector(`.financial-item[data-part-id="${partId}"][data-price-group="standard"]`);
+                    if(standardPriceRow) part.unitPriceStandard = parseFloat(standardPriceRow.querySelector('.financial-price').value) || 0;
+                    
+                    const specificPriceRow = DOM.financialsContainer.querySelector(`.financial-item[data-part-id="${partId}"][data-price-group="specific"]`);
+                    if(specificPriceRow) part.unitPriceSpecific = parseFloat(specificPriceRow.querySelector('.financial-price').value) || 0;
 
-                } else { // Modo 'detalhado'
+                } else { // detalhado
                     pItem.querySelectorAll('.detailed-item-row').forEach(row => {
                         const name = row.querySelector('.item-det-name').value;
                         const size = row.querySelector('.item-det-size').value;
@@ -1286,6 +1315,8 @@
                             part.details.push({ name, size, number });
                         }
                     });
+                    const detailedPriceRow = DOM.financialsContainer.querySelector(`.financial-item[data-part-id="${partId}"][data-price-group="detailed"]`);
+                    if(detailedPriceRow) part.unitPrice = parseFloat(detailedPriceRow.querySelector('.financial-price').value) || 0;
                 }
                 orderData.parts.push(part);
             });
@@ -1337,13 +1368,10 @@
             }
         };
 
-        const editOrder = (orderId) => {
-            const orderData = allOrders.find(o => o.id === orderId);
-            if (!orderData) return;
-
+        const editOrder = (orderData) => {
             resetForm();
             
-            document.getElementById('orderId').value = orderId;
+            document.getElementById('orderId').value = orderData.id;
             document.getElementById('modalTitle').textContent = 'Editar Pedido';
             document.getElementById('clientName').value = orderData.clientName;
             document.getElementById('clientPhone').value = orderData.clientPhone;
@@ -1380,11 +1408,31 @@
             }
 
             (orderData.parts || []).forEach(addPart);
+            
+            // Populate prices after financial rows are rendered
+            DOM.financialsContainer.querySelectorAll('.financial-item').forEach(finRow => {
+                const partId = finRow.dataset.partId;
+                const priceGroup = finRow.dataset.priceGroup;
+                const part = orderData.parts[partId - 1];
+                if (!part) return;
+
+                if (priceGroup === 'standard') {
+                    finRow.querySelector('.financial-price').value = part.unitPriceStandard || part.unitPrice || '';
+                } else if (priceGroup === 'specific') {
+                    finRow.querySelector('.financial-price').value = part.unitPriceSpecific || part.unitPrice || '';
+                } else if (priceGroup === 'detailed') {
+                    finRow.querySelector('.financial-price').value = part.unitPrice || '';
+                }
+            });
+
+            updateFinancials();
             DOM.orderModal.classList.remove('hidden');
         };
 
         const replicateOrder = (orderId) => {
-            editOrder(orderId);
+            const orderData = allOrders.find(o => o.id === orderId);
+            if (!orderData) return;
+            editOrder(orderData);
             document.getElementById('orderId').value = '';
             document.getElementById('modalTitle').textContent = 'Novo Pedido (Replicado)';
             document.getElementById('orderStatus').value = 'Pendente';
@@ -1455,8 +1503,17 @@
 
             let totalValue = 0;
             let partsHtml = (order.parts || []).map(p => {
-                const subtotal = (p.quantity || 0) * (p.unitPrice || 0);
+                const standardQty = Object.values(p.sizes || {}).flatMap(cat => Object.values(cat)).reduce((s, c) => s + c, 0);
+                const specificQty = (p.specifics || []).length;
+                const detailedQty = (p.details || []).length;
+
+                const standardSub = standardQty * (p.unitPriceStandard !== undefined ? p.unitPriceStandard : p.unitPrice || 0);
+                const specificSub = specificQty * (p.unitPriceSpecific !== undefined ? p.unitPriceSpecific : p.unitPrice || 0);
+                const detailedSub = detailedQty * (p.unitPrice || 0);
+
+                const subtotal = standardSub + specificSub + detailedSub;
                 totalValue += subtotal;
+
                 let itemsDetailHtml = '';
                 
                 if (p.partInputType === 'comum') {
@@ -1470,7 +1527,7 @@
                     let specificSizesHtml = '';
                     if (p.specifics && p.specifics.length > 0) {
                         specificSizesHtml = '<br><strong>Específicos:</strong><br>' + p.specifics.map(s => 
-                            `&nbsp;&nbsp;- L: ${s.width}, A: ${s.height} (${s.observation || 'N/A'})`
+                            `&nbsp;&nbsp;- L: ${s.width || 'N/A'}, A: ${s.height || 'N/A'} (${s.observation || 'Sem obs.'})`
                         ).join('<br>');
                     }
 
@@ -1482,13 +1539,22 @@
                     itemsDetailHtml = '<div class="text-xs text-gray-600 pl-2 mt-1">' + p.details.map(d => `${d.name || ''} - ${d.size || ''} - ${d.number || ''}`).join('<br>') + '</div>';
                 }
 
+                let unitPriceHtml = '';
+                if(p.partInputType === 'comum') {
+                    if(standardQty > 0) unitPriceHtml += `R$ ${(p.unitPriceStandard !== undefined ? p.unitPriceStandard : p.unitPrice || 0).toFixed(2)} (Padrão)<br>`;
+                    if(specificQty > 0) unitPriceHtml += `R$ ${(p.unitPriceSpecific !== undefined ? p.unitPriceSpecific : p.unitPrice || 0).toFixed(2)} (Específico)`;
+                } else {
+                    unitPriceHtml = `R$ ${(p.unitPrice || 0).toFixed(2)}`;
+                }
+
+
                 return `
                     <tr>
                         <td class="py-1 px-2 border">${p.type}${itemsDetailHtml}</td>
                         <td class="py-1 px-2 border">${p.material}</td>
                         <td class="py-1 px-2 border">${p.colorMain}</td>
-                        <td class="py-1 px-2 border text-center">${p.quantity}</td>
-                        <td class="py-1 px-2 border text-right">R$ ${(p.unitPrice || 0).toFixed(2)}</td>
+                        <td class="py-1 px-2 border text-center">${standardQty + specificQty + detailedQty}</td>
+                        <td class="py-1 px-2 border text-right">${unitPriceHtml}</td>
                         <td class="py-1 px-2 border text-right font-semibold">R$ ${subtotal.toFixed(2)}</td>
                     </tr>`;
             }).join('');
@@ -1567,7 +1633,15 @@
         };
         
         const generateReceiptPdf = async (orderData) => {
-            const totalValue = (orderData.parts || []).reduce((sum, p) => sum + (p.quantity * (p.unitPrice || 0)), 0);
+            let totalValue = 0;
+            (orderData.parts || []).forEach(p => {
+                 const standardQty = Object.values(p.sizes || {}).flatMap(cat => Object.values(cat)).reduce((s, c) => s + c, 0);
+                 const specificQty = (p.specifics || []).length;
+                 const standardSub = standardQty * (p.unitPriceStandard || p.unitPrice || 0);
+                 const specificSub = specificQty * (p.unitPriceSpecific || p.unitPrice || 0);
+                 totalValue += standardSub + specificSub;
+            });
+
             const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
             
             const companyUser = userCompanyName || (auth.currentUser ? auth.currentUser.email : 'Sua Empresa');
@@ -1965,8 +2039,11 @@
             const btn = e.target.closest('button');
             if (!btn) return;
             const id = btn.dataset.id;
-            if (btn.classList.contains('edit-btn')) editOrder(id);
-            if (btn.classList.contains('replicate-btn')) replicateOrder(id);
+            const order = allOrders.find(o => o.id === id);
+            if (!order) return;
+            
+            if (btn.classList.contains('edit-btn')) editOrder(order);
+            if (btn.classList.contains('replicate-btn')) replicateOrder(order);
             if (btn.classList.contains('delete-btn')) deleteOrder(id);
             if (btn.classList.contains('view-btn')) viewOrder(id);
         });
