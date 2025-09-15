@@ -56,7 +56,7 @@
             <div class="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <div class="flex items-center">
                     <img src="https://i.ibb.co/BHq1HsPG/2-removebg-preview.png" alt="Logo" class="h-8 w-auto mr-3">
-                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos3 <span class="text-xs font-semibold bg-yellow-200 text-yellow-800 py-1 px-2 rounded-full align-middle">AMBIENTE DE TESTES</span></h1>
+                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos <span class="text-xs font-semibold bg-yellow-200 text-yellow-800 py-1 px-2 rounded-full align-middle">AMBIENTE DE TESTES</span></h1>
                 </div>
                 <div class="flex items-center gap-4">
                      <button id="priceTableBtn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-300 transition duration-300 flex items-center justify-center" title="Tabela de Preços">
@@ -473,9 +473,6 @@
         
         const isProduction = firebaseConfig.projectId === 'saas-57e0d';
 
-        // ATENÇÃO: Substitua pelo e-mail do administrador que receberá as solicitações
-        const ADMIN_EMAIL = "seu-email-de-admin@exemplo.com";
-
         let app, db, auth, userId = null, dbCollection, transactionsCollection, pricingCollection;
         let allOrders = [], allTransactions = [], allPricingItems = [];
         let partCounter = 0;
@@ -630,35 +627,15 @@
 
         const handleRequestDeletion = async () => {
             const confirmed = await showConfirmModal(
-                "Isto enviará uma solicitação de exclusão de conta ao administrador. Seu acesso será revogado após a confirmação. Deseja continuar?",
-                "Sim, solicitar exclusão",
+                "Isto registrará uma solicitação de exclusão de conta. Para formalizar o pedido, você precisará enviar um e-mail ao administrador. Deseja continuar?",
+                "Sim, continuar",
                 "Cancelar"
             );
 
             if (confirmed) {
-                const user = auth.currentUser;
-                if (!user) return;
-
-                const subject = "Solicitação de Exclusão de Conta - Gerenciador de Pedidos";
-                const body = `Olá,
-
-O seguinte usuário solicitou a exclusão de sua conta do sistema Gerenciador de Pedidos:
-
-E-mail do Usuário: ${user.email}
-Empresa: ${userCompanyName}
-UID do Usuário: ${user.uid}
-
-Por favor, realize o procedimento de exclusão manual no Firebase Authentication e na coleção user_mappings.
-
-Atenciosamente,
-Sistema Gerenciador de Pedidos
-                `;
-                
-                const mailtoLink = `mailto:${ADMIN_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-                
-                window.location.href = mailtoLink;
-
-                showInfoModal("Abra seu aplicativo de e-mail para enviar a solicitação. O administrador processará seu pedido em breve.");
+                const adminEmail = "saianolucrobr@gmail.com";
+                const userEmail = auth.currentUser ? auth.currentUser.email : "[seu e-mail]";
+                showInfoModal(`Para concluir, por favor, envie um e-mail de ${userEmail} para ${adminEmail} solicitando a remoção da sua conta. O administrador processará seu pedido.`);
             }
         };
         
