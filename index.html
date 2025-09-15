@@ -343,6 +343,20 @@
             </form>
         </div>
     </div>
+    
+    <div id="forgotPasswordModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-[70] hidden modal-enter">
+        <div class="bg-white rounded-xl shadow-2xl p-8 max-w-sm w-full">
+            <h3 class="text-xl font-bold mb-4">Redefinir Senha</h3>
+            <p class="text-gray-600 mb-6">Por favor, digite o e-mail da sua conta para enviarmos um link de redefinição.</p>
+            <div class="space-y-4">
+                <input type="email" id="resetEmailInput" placeholder="E-mail" class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+            </div>
+            <div class="flex justify-end gap-4 mt-6">
+                <button id="cancelResetBtn" class="flex-1 bg-gray-200 text-gray-800 font-semibold py-2 px-6 rounded-lg hover:bg-gray-300">Cancelar</button>
+                <button id="sendResetEmailBtn" class="flex-1 bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg hover:bg-blue-700">Enviar E-mail</button>
+            </div>
+        </div>
+    </div>
 
     <template id="partTemplate">
         <div class="part-item border p-4 rounded-md bg-gray-50 relative space-y-3">
@@ -552,6 +566,11 @@
             savePriceTableBtn: document.getElementById('savePriceTableBtn'),
             cancelPriceTableBtn: document.getElementById('cancelPriceTableBtn'),
             closePriceTableBtn: document.getElementById('closePriceTableBtn'),
+            // Novo Modal de Redefinição de Senha
+            forgotPasswordModal: document.getElementById('forgotPasswordModal'),
+            resetEmailInput: document.getElementById('resetEmailInput'),
+            sendResetEmailBtn: document.getElementById('sendResetEmailBtn'),
+            cancelResetBtn: document.getElementById('cancelResetBtn'),
         };
 
         const showInfoModal = (message) => {
@@ -559,18 +578,45 @@
             DOM.infoModal.classList.remove('hidden');
         };
 
+        const showForgotPasswordModal = () => {
+            return new Promise((resolve) => {
+                DOM.resetEmailInput.value = '';
+                DOM.forgotPasswordModal.classList.remove('hidden');
+                DOM.resetEmailInput.focus();
+
+                const handleSend = () => {
+                    cleanupAndResolve(DOM.resetEmailInput.value.trim());
+                };
+
+                const handleCancel = () => {
+                    cleanupAndResolve(null);
+                };
+
+                const cleanupAndResolve = (value) => {
+                    DOM.sendResetEmailBtn.removeEventListener('click', handleSend);
+                    DOM.cancelResetBtn.removeEventListener('click', handleCancel);
+                    DOM.forgotPasswordModal.classList.add('hidden');
+                    resolve(value);
+                };
+
+                DOM.sendResetEmailBtn.addEventListener('click', handleSend, { once: true });
+                DOM.cancelResetBtn.addEventListener('click', handleCancel, { once: true });
+            });
+        };
+
         const handleForgotPassword = async (e) => {
             e.preventDefault();
-            const email = prompt("Por favor, digite o e-mail da sua conta para redefinir a senha:");
+            const email = await showForgotPasswordModal();
+            
             if (!email) {
-                return;
+                return; // Usuário cancelou
             }
             
             try {
                 await sendPasswordResetEmail(auth, email);
                 showInfoModal("Se uma conta existir para este e-mail, um link para redefinição de senha foi enviado.");
             } catch (error) {
-                // For security, show the same message even if there's an error (e.g., user not found).
+                // Por segurança, exibe a mesma mensagem mesmo em caso de erro (ex: usuário não encontrado).
                 console.error("Erro na tentativa de redefinição de senha (silenciado para o usuário):", error.code);
                 showInfoModal("Se uma conta existir para este e-mail, um link para redefinição de senha foi enviado.");
             }
@@ -2278,6 +2324,8 @@
             if (event.key === 'Escape') {
                 if (!DOM.confirmModal.classList.contains('hidden')) {
                     DOM.confirmCancelBtn.click();
+                } else if (!DOM.forgotPasswordModal.classList.contains('hidden')) {
+                    DOM.cancelResetBtn.click();
                 } else if (!DOM.viewModal.classList.contains('hidden')) {
                     document.getElementById('closeViewBtn')?.click();
                 } else if (!DOM.orderModal.classList.contains('hidden')) {
