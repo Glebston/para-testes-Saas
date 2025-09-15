@@ -44,6 +44,9 @@
                     <input type="password" id="loginPassword" placeholder="Senha" class="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                 </div>
                 <button type="submit" class="w-full px-4 py-2 mt-6 font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700">Entrar</button>
+                 <div class="mt-4 text-center">
+                    <a href="#" id="forgotPasswordBtn" class="text-sm text-blue-600 hover:underline">Esqueci minha senha</a>
+                </div>
             </form>
         </div>
     </div>
@@ -53,7 +56,7 @@
             <div class="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <div class="flex items-center">
                     <img src="https://i.ibb.co/BHq1HsPG/2-removebg-preview.png" alt="Logo" class="h-8 w-auto mr-3">
-                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos 2<span class="text-xs font-semibold bg-yellow-200 text-yellow-800 py-1 px-2 rounded-full align-middle">AMBIENTE DE TESTES</span></h1>
+                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos <span class="text-xs font-semibold bg-yellow-200 text-yellow-800 py-1 px-2 rounded-full align-middle">AMBIENTE DE TESTES</span></h1>
                 </div>
                 <div class="flex items-center gap-4">
                      <button id="priceTableBtn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-300 transition duration-300 flex items-center justify-center" title="Tabela de Preços">
@@ -438,7 +441,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getFirestore, collection, addDoc, onSnapshot, doc, getDoc, updateDoc, deleteDoc, query, writeBatch, getDocs, serverTimestamp, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         const IMGBB_API_KEY = "f012978df48f3596b193c06e05589442";
         
@@ -469,6 +472,7 @@
         const DOM = {
             authContainer: document.getElementById('authContainer'),
             loginForm: document.getElementById('loginForm'),
+            forgotPasswordBtn: document.getElementById('forgotPasswordBtn'),
             logoutBtn: document.getElementById('logoutBtn'),
             userEmail: document.getElementById('userEmail'),
             app: document.getElementById('app'),
@@ -553,6 +557,23 @@
         const showInfoModal = (message) => {
             DOM.infoModalMessage.textContent = message;
             DOM.infoModal.classList.remove('hidden');
+        };
+
+        const handleForgotPassword = async (e) => {
+            e.preventDefault();
+            const email = prompt("Por favor, digite o e-mail da sua conta para redefinir a senha:");
+            if (!email) {
+                return;
+            }
+            
+            try {
+                await sendPasswordResetEmail(auth, email);
+                showInfoModal("Se uma conta existir para este e-mail, um link para redefinição de senha foi enviado.");
+            } catch (error) {
+                // For security, show the same message even if there's an error (e.g., user not found).
+                console.error("Erro na tentativa de redefinição de senha (silenciado para o usuário):", error.code);
+                showInfoModal("Se uma conta existir para este e-mail, um link para redefinição de senha foi enviado.");
+            }
         };
         
         const handleLogin = async (e) => {
@@ -2074,6 +2095,7 @@
         // --- Event Listeners ---
         window.addEventListener('load', initializeFirebase);
         DOM.loginForm.addEventListener('submit', handleLogin);
+        DOM.forgotPasswordBtn.addEventListener('click', handleForgotPassword);
         DOM.infoModalCloseBtn.addEventListener('click', () => DOM.infoModal.classList.add('hidden'));
         DOM.logoutBtn.addEventListener('click', handleLogout);
         DOM.backupBtn.addEventListener('click', handleBackup);
@@ -2095,7 +2117,7 @@
             if (!order) return;
             
             if (btn.classList.contains('edit-btn')) editOrder(order);
-            if (btn.classList.contains('replicate-btn')) replicateOrder(id);
+            if (btn.classList.contains('replicate-btn')) replicateOrder(order.id);
             if (btn.classList.contains('delete-btn')) deleteOrder(id);
             if (btn.classList.contains('view-btn')) viewOrder(id);
         });
