@@ -24,7 +24,7 @@
         .part-type-selector:not(.active) { @apply bg-white border-gray-300 text-gray-600 hover:bg-gray-100; }
         .source-selector { @apply px-4 py-2 text-sm font-semibold rounded-lg border-2 transition-colors duration-200; }
         .source-selector.active { @apply bg-indigo-600 border-indigo-600 text-white; }
-        .source-selector:not(.active) { @apply bg-white border-gray-300 text-gray-700 hover:bg-gray-100; }
+        .source-selector:not(.active) { @apply bg-white border-gray-300 text-gray-700 hover:bg-indigo-50 hover:border-indigo-400; }
         .status-badge { @apply text-xs font-semibold py-1 px-2 rounded-full; }
         .status-Pendente { @apply bg-yellow-100 text-yellow-800; }
         .status-Confirmado { @apply bg-blue-100 text-blue-800; }
@@ -62,7 +62,7 @@
             <div class="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <div class="flex items-center">
                     <img src="https://i.ibb.co/BHq1HsPG/2-removebg-preview.png" alt="Logo" class="h-8 w-auto mr-3">
-                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos1</h1>
+                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos</h1>
                 </div>
                 <div class="flex items-center gap-4">
                      <button id="priceTableBtn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-300 transition duration-300 flex items-center justify-center" title="Tabela de Preços">
@@ -348,8 +348,14 @@
                     <div>
                         <label class="text-sm font-semibold">Origem</label>
                         <div id="transactionSourceContainer" class="flex gap-2 mt-1">
-                            <button type="button" class="source-selector flex-1" data-source="banco">Banco</button>
-                            <button type="button" class="source-selector flex-1" data-source="caixa">Caixa</button>
+                            <button type="button" class="source-selector flex-1 flex items-center justify-center gap-2" data-source="banco">
+                                <span class="icon-placeholder w-4 h-4"></span>
+                                <span>Banco</span>
+                            </button>
+                            <button type="button" class="source-selector flex-1 flex items-center justify-center gap-2" data-source="caixa">
+                                <span class="icon-placeholder w-4 h-4"></span>
+                                <span>Caixa</span>
+                            </button>
                         </div>
                     </div>
                     <div>
@@ -507,6 +513,7 @@
         };
         
         const isProduction = firebaseConfig.projectId === 'saas-57e0d';
+        const CHECK_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
 
         let app, db, auth, userId = null, dbCollection, transactionsCollection, pricingCollection, companyRef;
         let allOrders = [], allTransactions = [], allPricingItems = [];
@@ -1144,11 +1151,10 @@
                     let ordersToRestore = [];
                     let transactionsToRestore = [];
 
-                    // Retro-compatibility check
-                    if (Array.isArray(dataFromFile)) { // Old format (just an array of orders)
+                    if (Array.isArray(dataFromFile)) {
                         ordersToRestore = dataFromFile;
                         showInfoModal("Backup de formato antigo detectado. Apenas os pedidos serão restaurados.");
-                    } else if (typeof dataFromFile === 'object' && dataFromFile.orders) { // New format
+                    } else if (typeof dataFromFile === 'object' && dataFromFile.orders) {
                         ordersToRestore = dataFromFile.orders || [];
                         transactionsToRestore = dataFromFile.transactions || [];
                     } else {
@@ -1166,17 +1172,17 @@
                 }
             };
             reader.readAsText(file);
-            event.target.value = ''; // Reset input to allow re-uploading the same file
+            event.target.value = '';
         };
 
         const processRestore = async (ordersToRestore, transactionsToRestore) => {
             const choice = await showConfirmModal("Escolha o modo de importação:", "Adicionar aos existentes", "Substituir tudo");
-            if (choice === null) return; // User cancelled
+            if (choice === null) return;
 
-            if (choice) { // ADICIONAR
+            if (choice) {
                 const batch = writeBatch(db);
                 ordersToRestore.forEach(order => {
-                    const newDocRef = doc(dbCollection); // dbCollection is orders
+                    const newDocRef = doc(dbCollection);
                     batch.set(newDocRef, order);
                 });
                 transactionsToRestore.forEach(transaction => {
@@ -1185,21 +1191,17 @@
                 });
                 await batch.commit();
                 showInfoModal(`${ordersToRestore.length} pedido(s) e ${transactionsToRestore.length} lançamento(s) foram ADICIONADOS.`);
-            } else { // SUBSTITUIR
+            } else {
                 const confirmReplace = await showConfirmModal(
                     "ATENÇÃO: Isto vai APAGAR TODOS os seus pedidos E lançamentos financeiros atuais. A ação NÃO PODE SER DESFEITA. Continuar?",
                     "Sim, substituir tudo",
                     "Cancelar"
                 );
                 if (confirmReplace) {
-                    // --- Deletion Phase ---
                     const deleteBatch = writeBatch(db);
-                    const allOrdersQuery = query(dbCollection);
-                    const allTransactionsQuery = query(transactionsCollection);
-                    
                     const [ordersSnap, transactionsSnap] = await Promise.all([
-                        getDocs(allOrdersQuery),
-                        getDocs(allTransactionsQuery)
+                        getDocs(query(dbCollection)),
+                        getDocs(query(transactionsCollection))
                     ]);
 
                     ordersSnap.forEach(docSnap => deleteBatch.delete(docSnap.ref));
@@ -1209,7 +1211,6 @@
                         await deleteBatch.commit();
                     }
 
-                    // --- Addition Phase ---
                     const addBatch = writeBatch(db);
                     ordersToRestore.forEach(order => {
                         const newDocRef = doc(dbCollection);
@@ -1359,7 +1360,7 @@
                 sizesGrid.addEventListener('input', renderFinancialSection);
                 contentContainer.appendChild(comumTpl);
 
-            } else { // Modo 'detalhado'
+            } else {
                 const detalhadoTpl = document.getElementById('detalhadoPartContentTemplate').content.cloneNode(true);
                 const listContainer = detalhadoTpl.querySelector('.detailed-items-list');
                 const addRow = (detail = {}) => {
@@ -1423,7 +1424,7 @@
                         const finRow = createFinancialRow(partId, partName, specificQty, 'specific');
                         DOM.financialsContainer.appendChild(finRow);
                     }
-                } else { // detalhado
+                } else {
                     const totalQty = partItem.querySelectorAll('.detailed-item-row').length;
                     if (totalQty > 0) {
                        const finRow = createFinancialRow(partId, partName, totalQty, 'detailed');
@@ -1460,7 +1461,7 @@
                     specifics: [],
                     unitPriceStandard: 0,
                     unitPriceSpecific: 0,
-                    unitPrice: 0 // For detailed type and backward compatibility
+                    unitPrice: 0
                 };
 
                 if (part.partInputType === 'comum') {
@@ -1485,7 +1486,7 @@
                     const specificPriceRow = DOM.financialsContainer.querySelector(`.financial-item[data-part-id="${partId}"][data-price-group="specific"]`);
                     if(specificPriceRow) part.unitPriceSpecific = parseFloat(specificPriceRow.querySelector('.financial-price').value) || 0;
 
-                } else { // detalhado
+                } else {
                     pItem.querySelectorAll('.detailed-item-row').forEach(row => {
                         const name = row.querySelector('.item-det-name').value;
                         const size = row.querySelector('.item-det-size').value;
@@ -1588,7 +1589,6 @@
 
             (orderData.parts || []).forEach(addPart);
             
-            // Populate prices after financial rows are rendered
             DOM.financialsContainer.querySelectorAll('.financial-item').forEach(finRow => {
                 const partId = finRow.dataset.partId;
                 const priceGroup = finRow.dataset.priceGroup;
@@ -1934,7 +1934,6 @@
                     despesasTotais += amount;
                 }
                 
-                // Bank balance calculation (source defaults to 'banco' for old transactions)
                 if (t.source === 'banco' || t.source === undefined) {
                     if (t.type === 'income' && t.status !== 'a_receber') {
                         bankFlow += amount;
@@ -2037,6 +2036,15 @@
             DOM.transactionsList.innerHTML = transactionsHtml || `<tr><td colspan="6" class="text-center py-4 text-gray-500">${searchTerm ? 'Nenhum lançamento encontrado para a busca.' : 'Nenhum lançamento encontrado para este período.'}</td></tr>`;
         };
         
+        const updateSourceSelectionUI = (selectedSource) => {
+             DOM.transactionSourceContainer.querySelectorAll('.source-selector').forEach(btn => {
+                const isSelected = btn.dataset.source === selectedSource;
+                btn.classList.toggle('active', isSelected);
+                const iconPlaceholder = btn.querySelector('.icon-placeholder');
+                iconPlaceholder.innerHTML = isSelected ? CHECK_ICON_SVG : '';
+            });
+        };
+
         const saveTransaction = async () => {
             const selectedSourceEl = DOM.transactionSourceContainer.querySelector('.source-selector.active');
             if (!selectedSourceEl) {
@@ -2090,9 +2098,7 @@
             document.getElementById('transactionType').value = transaction.type;
             document.getElementById('transactionCategory').value = transaction.category || '';
             
-            DOM.transactionSourceContainer.querySelectorAll('.source-selector').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.source === (transaction.source || 'banco'));
-            });
+            updateSourceSelectionUI(transaction.source || 'banco');
 
             const statusContainer = document.getElementById('transactionStatusContainer');
             if (transaction.type === 'income') {
@@ -2316,8 +2322,7 @@
             document.getElementById('transactionDate').value = new Date().toISOString().split('T')[0];
             document.getElementById('transactionStatusContainer').classList.remove('hidden');
             document.querySelector('input[name="transactionStatus"][value="pago"]').checked = true;
-            DOM.transactionSourceContainer.querySelector('[data-source="banco"]').classList.add('active');
-            DOM.transactionSourceContainer.querySelector('[data-source="caixa"]').classList.remove('active');
+            updateSourceSelectionUI('banco');
             DOM.transactionModal.classList.remove('hidden');
         });
 
@@ -2328,8 +2333,7 @@
             document.getElementById('transactionModalTitle').textContent = 'Nova Despesa';
             document.getElementById('transactionDate').value = new Date().toISOString().split('T')[0];
             document.getElementById('transactionStatusContainer').classList.add('hidden');
-            DOM.transactionSourceContainer.querySelector('[data-source="banco"]').classList.add('active');
-            DOM.transactionSourceContainer.querySelector('[data-source="caixa"]').classList.remove('active');
+            updateSourceSelectionUI('banco');
             DOM.transactionModal.classList.remove('hidden');
         });
 
@@ -2432,8 +2436,7 @@
         DOM.transactionSourceContainer.addEventListener('click', (e) => {
             const target = e.target.closest('.source-selector');
             if (!target) return;
-            DOM.transactionSourceContainer.querySelectorAll('.source-selector').forEach(btn => btn.classList.remove('active'));
-            target.classList.add('active');
+            updateSourceSelectionUI(target.dataset.source);
         });
 
         DOM.adjustBalanceBtn.addEventListener('click', () => {
