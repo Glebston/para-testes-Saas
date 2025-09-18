@@ -61,7 +61,7 @@
             <div class="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <div class="flex items-center">
                     <img src="https://i.ibb.co/BHq1HsPG/2-removebg-preview.png" alt="Logo" class="h-8 w-auto mr-3">
-                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos</h1>
+                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos1</h1>
                 </div>
                 <div class="flex items-center gap-4">
                         <button id="priceTableBtn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-300 transition duration-300 flex items-center justify-center" title="Tabela de Preços">
@@ -1812,7 +1812,7 @@
                     throw new Error("Pedido não encontrado.");
                 }
 
-                const { jsPDF } = window.jspdf;
+                const { jsPDF } = window; // CORREÇÃO APLICADA AQUI
                 const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
                 const pageWidth = doc.internal.pageSize.getWidth();
                 const margin = 10;
@@ -1820,11 +1820,10 @@
 
                 // ETAPA 1: Renderizar o conteúdo de texto
                 const textElement = document.getElementById('printable-details');
-                const mockupContainer = textElement.querySelector('#mockupContainerView'); // Target the container inside printable-details
+                const mockupContainer = textElement.querySelector('#mockupContainerView');
                 
-                // Esconder o container de mockups para a captura de texto
                 if(mockupContainer) mockupContainer.style.display = 'none';
-                textElement.classList.remove('p-8', 'pb-8'); // Remover padding para captura
+                textElement.classList.remove('p-8', 'pb-8');
 
                 const textCanvas = await html2canvas(textElement, {
                     scale: 2,
@@ -1832,7 +1831,6 @@
                     logging: false
                 });
 
-                // Restaurar a visibilidade e o padding
                 if(mockupContainer) mockupContainer.style.display = 'block';
                 textElement.classList.add('p-8', 'pb-8');
 
@@ -1849,7 +1847,6 @@
                         img.crossOrigin = "anonymous";
                         img.onload = () => resolve(img);
                         img.onerror = err => reject(err);
-                        // Adicionar parâmetro para evitar problemas de cache/CORS
                         img.src = src.includes('?') ? `${src}&v=${Date.now()}` : `${src}?v=${Date.now()}`;
                     });
 
