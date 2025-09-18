@@ -33,7 +33,6 @@
         .status-Entregue { @apply bg-gray-200 text-gray-800; }
         .kanban-board { display: flex; overflow-x: auto; padding-bottom: 1rem; gap: 1.5rem; }
         .kanban-column { flex: 0 0 340px; max-width: 340px; }
-        .html2pdf__page-break { page-break-before: always; }
     </style>
 </head>
 <body class="antialiased text-gray-800 bg-slate-50">
@@ -62,14 +61,14 @@
             <div class="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <div class="flex items-center">
                     <img src="https://i.ibb.co/BHq1HsPG/2-removebg-preview.png" alt="Logo" class="h-8 w-auto mr-3">
-                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos1</h1>
+                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos</h1>
                 </div>
                 <div class="flex items-center gap-4">
-                     <button id="priceTableBtn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-300 transition duration-300 flex items-center justify-center" title="Tabela de Preços">
-                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                           <path fill-rule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a1 1 0 011-1h5a1 1 0 01.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
-                         </svg>
-                     </button>
+                        <button id="priceTableBtn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-300 transition duration-300 flex items-center justify-center" title="Tabela de Preços">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a1 1 0 011-1h5a1 1 0 01.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
                     <button id="addOrderBtn" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-blue-700 transition duration-300 flex items-center justify-center">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                         Novo Pedido
@@ -1795,13 +1794,6 @@
                                 ${(order.mockupUrls || []).map(url => `<a href="${url}" target="_blank"><img src="${url}" class="w-32 h-32 object-cover border rounded-md mockup-image"></a>`).join('') || 'Nenhum arquivo.'}
                             </div>
                         </div>
-
-                        <div id="mockupContainerPdf" class="hidden">
-                            <h3 class="font-bold text-lg mt-4">Arquivos</h3>
-                            <div class="flex flex-wrap gap-4 mt-2">
-                                ${(order.mockupUrls || []).map(url => `<img src="${url}" class="w-full h-auto object-contain border rounded-md mockup-image mt-4">`).join('') || ''}
-                            </div>
-                        </div>
                     </div>
                     <div class="p-4 bg-gray-100 border-t flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-4">
                         <button id="comprehensivePdfBtn" data-name="${order.clientName}" data-id="${order.id}" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg">Gerar PDF do pedido</button>
@@ -1813,28 +1805,76 @@
         };
 
         const generateComprehensivePdf = async (orderId, clientName) => {
-            const order = allOrders.find(o => o.id === orderId);
-            if (!order) return;
+            showInfoModal("Gerando PDF, por favor aguarde...");
+            try {
+                const order = allOrders.find(o => o.id === orderId);
+                if (!order) {
+                    throw new Error("Pedido não encontrado.");
+                }
 
-            const element = document.getElementById('printable-details');
-            const mockupContainer = document.getElementById('mockupContainerPdf');
-            
-            element.classList.remove('p-8', 'pb-8');
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const margin = 10;
+                const usableWidth = pageWidth - margin * 2;
 
-            mockupContainer.classList.remove('hidden');
+                // ETAPA 1: Renderizar o conteúdo de texto
+                const textElement = document.getElementById('printable-details');
+                const mockupContainer = textElement.querySelector('#mockupContainerView'); // Target the container inside printable-details
+                
+                // Esconder o container de mockups para a captura de texto
+                if(mockupContainer) mockupContainer.style.display = 'none';
+                textElement.classList.remove('p-8', 'pb-8'); // Remover padding para captura
 
-            const options = {
-                margin: 10,
-                filename: `Pedido_${clientName.replace(/\s/g, '_')}.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
+                const textCanvas = await html2canvas(textElement, {
+                    scale: 2,
+                    useCORS: true,
+                    logging: false
+                });
 
-            html2pdf().from(element).set(options).save().finally(() => {
-                mockupContainer.classList.add('hidden');
-                element.classList.add('p-8', 'pb-8');
-            });
+                // Restaurar a visibilidade e o padding
+                if(mockupContainer) mockupContainer.style.display = 'block';
+                textElement.classList.add('p-8', 'pb-8');
+
+                const textImgData = textCanvas.toDataURL('image/jpeg', 0.98);
+                const textImgProps = doc.getImageProperties(textImgData);
+                const textCanvasHeight = (textImgProps.height * usableWidth) / textImgProps.width;
+                doc.addImage(textImgData, 'JPEG', margin, margin, usableWidth, textCanvasHeight);
+
+                // ETAPA 2: Adicionar as imagens dos mockups
+                const imageUrls = order.mockupUrls || [];
+                if (imageUrls.length > 0) {
+                    const loadImage = src => new Promise((resolve, reject) => {
+                        const img = new Image();
+                        img.crossOrigin = "anonymous";
+                        img.onload = () => resolve(img);
+                        img.onerror = err => reject(err);
+                        // Adicionar parâmetro para evitar problemas de cache/CORS
+                        img.src = src.includes('?') ? `${src}&v=${Date.now()}` : `${src}?v=${Date.now()}`;
+                    });
+
+                    for (const url of imageUrls) {
+                        try {
+                            const img = await loadImage(url);
+                            const imgHeight = (img.height * usableWidth) / img.width;
+                            doc.addPage();
+                            doc.addImage(img, 'JPEG', margin, margin, usableWidth, imgHeight);
+                        } catch (error) {
+                            console.error(`Erro ao carregar a imagem ${url}:`, error);
+                            doc.addPage();
+                            doc.text(`Não foi possível carregar a imagem: ${url}`, margin, margin);
+                        }
+                    }
+                }
+
+                doc.save(`Pedido_${clientName.replace(/\s/g, '_')}.pdf`);
+                DOM.infoModalCloseBtn.click();
+                setTimeout(() => showInfoModal("PDF gerado com sucesso!"), 200);
+
+            } catch (error) {
+                console.error("Erro detalhado ao gerar PDF:", error);
+                showInfoModal(`Ocorreu um erro ao gerar o PDF: ${error.message}`);
+            }
         };
         
         const generateReceiptPdf = async (orderData) => {
@@ -2159,14 +2199,14 @@
         const markTransactionAsPaid = async (id) => {
              const transactionRef = doc(transactionsCollection, id);
                  try {
-                      await updateDoc(transactionRef, {
+                       await updateDoc(transactionRef, {
                            status: 'pago',
                            date: new Date().toISOString().split('T')[0]
-                      });
-                 } catch(error) {
+                       });
+                } catch(error) {
                       console.error("Erro ao marcar como recebido:", error);
                       showInfoModal("Não foi possível atualizar o lançamento.");
-                 }
+                }
         };
         
         const checkBackupReminder = () => {
