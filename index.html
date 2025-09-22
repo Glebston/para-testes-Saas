@@ -62,7 +62,7 @@
             <div class="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <div class="flex items-center">
                     <img src="https://i.ibb.co/BHq1HsPG/2-removebg-preview.png" alt="Logo" class="h-8 w-auto mr-3">
-                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos</h1>
+                    <h1 class="text-xl font-bold text-gray-900">Gerenciador de Pedidos21</h1>
                 </div>
                 <div class="flex items-center gap-4">
                     <button id="priceTableBtn" class="bg-gray-200 text-gray-700 font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-300 transition duration-300 flex items-center justify-center" title="Tabela de Preços">
@@ -758,6 +758,7 @@
                 resetIdleTimer();
                 initializeAndPopulateDatalists();
                 checkBackupReminder();
+                triggerAutoBackupIfNeeded(); // <-- NOVA FUNÇÃO CHAMADA AQUI
             } else {
                 showInfoModal("Erro: Usuário não associado a nenhuma empresa. Fale com o suporte.");
                 handleLogout();
@@ -1151,8 +1152,15 @@
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            showInfoModal("Backup completo gerado com sucesso!");
-            localStorage.setItem(`backupTimestamp_${userCompanyId}`, Date.now());
+            
+            localStorage.setItem(`lastAutoBackupTimestamp_${userCompanyId}`, Date.now());
+            // Mostra a mensagem apenas se não for parte do fluxo automático
+            if (!document.getElementById('infoModal').classList.contains('hidden') && DOM.infoModalMessage.textContent.includes('Backup semi-automático')) {
+                // Se o modal de backup automático já estiver visível, não mostra outro
+            } else {
+                showInfoModal("Backup completo gerado com sucesso!");
+            }
+            
         };
 
         const handleRestore = async (event) => {
@@ -2066,20 +2074,18 @@
                 </div>
             `;
             
-            // Re-using jsPDF for consistency, although html2canvas would also work here.
             try {
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF('p', 'mm', 'a4');
                 
-                // Using experimental fromHTML, might need html2canvas for robustness
                 await doc.html(receiptHtml, {
                     callback: function (doc) {
                         doc.save(`Recibo_${orderData.clientName.replace(/\s/g, '_')}.pdf`);
                     },
                     x: 5,
                     y: 5,
-                    width: 200, // A4 width is 210, using a margin
-                    windowWidth: 700 // Width of the source HTML
+                    width: 200, 
+                    windowWidth: 700 
                 });
 
             } catch (error) {
@@ -2357,8 +2363,26 @@
                }
         };
         
+        const triggerAutoBackupIfNeeded = () => {
+            const storageKey = `lastAutoBackupTimestamp_${userCompanyId}`;
+            const lastBackupTimestamp = localStorage.getItem(storageKey);
+
+            if (!lastBackupTimestamp) {
+                return; // Não faz nada se nunca houve um backup
+            }
+
+            const now = Date.now();
+            const sevenDaysInMillis = 7 * 24 * 60 * 60 * 1000;
+            
+            if ((now - parseInt(lastBackupTimestamp)) > sevenDaysInMillis) {
+                showInfoModal("Backup semi-automático iniciado. Seu último backup foi há mais de 7 dias.");
+                handleBackup();
+            }
+        };
+        
         const checkBackupReminder = () => {
-            const lastBackupTimestamp = localStorage.getItem(`backupTimestamp_${userCompanyId}`);
+            const storageKey = `lastAutoBackupTimestamp_${userCompanyId}`;
+            const lastBackupTimestamp = localStorage.getItem(storageKey);
             if (!lastBackupTimestamp) {
                 return;
             }
