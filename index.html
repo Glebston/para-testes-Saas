@@ -40,10 +40,6 @@
 </head>
 <body class="antialiased text-gray-800 bg-slate-50">
 
-    <div id="testIndicator" class="hidden bg-yellow-400 text-yellow-900 text-center p-2 font-bold text-sm">
-        AMBIENTE DE TESTES
-    </div>
-
     <div id="authContainer" class="flex items-center justify-center min-h-screen">
         <div class="w-full max-w-md p-8 space-y-6 bg-white rounded-xl shadow-md">
             <form id="loginForm">
@@ -61,6 +57,9 @@
     </div>
 
     <div id="app" class="hidden">
+        <div id="testIndicator" class="bg-yellow-400 text-black text-center font-bold p-2 text-sm sticky top-0 z-50">
+            AMBIENTE DE TESTES
+        </div>
         <header class="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-40">
             <div class="w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
                 <div class="flex items-center">
@@ -411,12 +410,12 @@
         </div>
     </div>
 
-    <div id="cookieConsentBanner" class="hidden fixed bottom-0 left-0 right-0 bg-slate-800 text-white p-4 flex flex-col sm:flex-row items-center justify-between gap-4 z-[100] toast-enter">
-        <p class="text-sm text-center sm:text-left">
+    <div id="cookieBanner" class="hidden fixed bottom-0 left-0 right-0 bg-gray-800 text-white p-4 shadow-lg z-50 flex flex-col sm:flex-row items-center justify-center gap-4 text-center sm:text-left">
+        <p class="text-sm">
             Utilizamos tecnologias essenciais para o funcionamento da plataforma. Ao continuar, você concorda com o uso delas. Para mais detalhes, acesse nossa 
-            <a href="https://paglucrobr.com/gerenciador-privacidade" target="_blank" class="font-semibold underline hover:text-slate-200">Política de Privacidade</a>.
+            <a href="https://paglucrobr.com/gerenciador-privacidade" target="_blank" rel="noopener noreferrer" class="font-semibold underline hover:text-gray-300">Política de Privacidade</a>.
         </p>
-        <button id="cookieConsentBtn" class="bg-blue-600 text-white font-semibold py-2 px-5 rounded-lg hover:bg-blue-700 flex-shrink-0">Entendi</button>
+        <button id="cookieAcceptBtn" class="bg-blue-600 text-white font-semibold py-2 px-5 rounded-lg hover:bg-blue-700 whitespace-nowrap">Entendi</button>
     </div>
 
     <template id="partTemplate">
@@ -523,12 +522,12 @@
         
         // CONFIGURAÇÃO PARA AMBIENTE DE TESTES
         const firebaseConfig = { 
-          apiKey: "AIzaSyDZrgh2y3d0fiv5uF_d73Syuo54_39L__8", 
-          authDomain: "saas-teste-c8d7a.firebaseapp.com", 
-          projectId: "saas-teste-c8d7a", 
-          storageBucket: "saas-teste-c8d7a.appspot.com", 
-          messagingSenderId: "281601947474", 
-          appId: "1:281601947474:web:1e580dbb06b685bf5d2c8b" 
+            apiKey: "AIzaSyDZrgh2y3d0fiv5uF_d73Syuo54_39L__8", 
+            authDomain: "saas-teste-c8d7a.firebaseapp.com", 
+            projectId: "saas-teste-c8d7a", 
+            storageBucket: "saas-teste-c8d7a.appspot.com", 
+            messagingSenderId: "281601947474", 
+            appId: "1:281601947474:web:1e580dbb06b685bf5d2c8b" 
         };
         
         const isProduction = firebaseConfig.projectId === 'saas-57e0d';
@@ -547,7 +546,6 @@
         ];
 
         const DOM = {
-            testIndicator: document.getElementById('testIndicator'),
             authContainer: document.getElementById('authContainer'),
             loginForm: document.getElementById('loginForm'),
             forgotPasswordBtn: document.getElementById('forgotPasswordBtn'),
@@ -643,19 +641,12 @@
             resetEmailInput: document.getElementById('resetEmailInput'),
             sendResetEmailBtn: document.getElementById('sendResetEmailBtn'),
             cancelResetBtn: document.getElementById('cancelResetBtn'),
-            cookieConsentBanner: document.getElementById('cookieConsentBanner'),
-            cookieConsentBtn: document.getElementById('cookieConsentBtn'),
+            // NOVO: DOM Elements para Banner de Cookies
+            cookieBanner: document.getElementById('cookieBanner'),
+            cookieAcceptBtn: document.getElementById('cookieAcceptBtn'),
         };
 
         // 2. Funções Utilitárias e de Modais (showInfoModal, showConfirmModal, resetIdleTimer, etc.)
-        const handleCookieConsent = () => {
-            if (localStorage.getItem('cookieConsent')) {
-                DOM.cookieConsentBanner.classList.add('hidden');
-            } else {
-                DOM.cookieConsentBanner.classList.remove('hidden');
-            }
-        };
-
         const showInfoModal = (message) => {
             DOM.infoModalMessage.textContent = message;
             DOM.infoModal.classList.remove('hidden');
@@ -687,6 +678,44 @@
             });
         };
 
+        const showConfirmModal = (message, okText = "OK", cancelText = "Cancelar") => {
+            return new Promise((resolve) => {
+                DOM.confirmModalMessage.textContent = message;
+                DOM.confirmOkBtn.textContent = okText;
+                DOM.confirmCancelBtn.textContent = cancelText;
+                DOM.confirmModal.classList.remove('hidden');
+
+                const confirmListener = () => resolvePromise(true);
+                const cancelListener = () => resolvePromise(false);
+
+                const resolvePromise = (value) => {
+                    DOM.confirmModal.classList.add('hidden');
+                    DOM.confirmOkBtn.removeEventListener('click', confirmListener);
+                    DOM.confirmCancelBtn.removeEventListener('click', cancelListener);
+                    resolve(value);
+                };
+
+                DOM.confirmOkBtn.addEventListener('click', confirmListener, { once: true });
+                DOM.confirmCancelBtn.addEventListener('click', cancelListener, { once: true });
+            });
+        };
+
+        const resetIdleTimer = () => {
+            clearTimeout(idleTimeout);
+            clearInterval(countdownInterval);
+            DOM.idleModal.classList.add('hidden');
+            idleTimeout = setTimeout(startCountdown, IDLE_TIMEOUT_MS);
+        };
+        
+        // NOVO: Função para gerenciar o banner de cookies
+        const handleCookieConsent = () => {
+            if (localStorage.getItem('cookieConsent')) {
+                DOM.cookieBanner.classList.add('hidden');
+            } else {
+                DOM.cookieBanner.classList.remove('hidden');
+            }
+        };
+        // 3. Funções de Negócio (addPart, saveOrder, renderOrders, etc.)
         const handleForgotPassword = async (e) => {
             e.preventDefault();
             const email = await showForgotPasswordModal();
@@ -809,12 +838,10 @@
                     if (user) {
                         DOM.authContainer.classList.add('hidden');
                         DOM.app.classList.remove('hidden');
-                        if (!isProduction) { DOM.testIndicator.classList.remove('hidden'); }
                         initializeAppLogic(user);
                     } else {
                         DOM.app.classList.add('hidden');
                         DOM.authContainer.classList.remove('hidden');
-                        if (!isProduction) { DOM.testIndicator.classList.add('hidden'); }
                         userCompanyId = null;
                         userCompanyName = null;
                     }
@@ -840,13 +867,6 @@
                     handleLogout();
                 }
             }, 1000);
-        };
-
-        const resetIdleTimer = () => {
-            clearTimeout(idleTimeout);
-            clearInterval(countdownInterval);
-            DOM.idleModal.classList.add('hidden');
-            idleTimeout = setTimeout(startCountdown, IDLE_TIMEOUT_MS);
         };
         
         const defaultOptions = {
@@ -912,7 +932,7 @@
                 openOptionsModal(currentOptionType);
             }
         };
-        // 3. Funções de Negócio (addPart, saveOrder, renderOrders, etc.)
+        
         const setupFirestoreListener = () => {
             if (!dbCollection) return;
             onSnapshot(query(dbCollection), (snapshot) => {
@@ -1283,24 +1303,6 @@
                 }
             }
         };
-
-        const updateFinancials = () => {
-            let subtotal = 0;
-            DOM.financialsContainer.querySelectorAll('.financial-item').forEach(item => {
-                const quantity = parseFloat(item.querySelector('.financial-quantity').value) || 0;
-                const price = parseFloat(item.querySelector('.financial-price').value) || 0;
-                const itemSubtotal = quantity * price;
-                item.querySelector('.financial-subtotal').textContent = `R$ ${itemSubtotal.toFixed(2)}`;
-                subtotal += itemSubtotal;
-            });
-
-            const discount = parseFloat(DOM.discount.value) || 0;
-            const grandTotal = Math.max(0, subtotal - discount);
-            const downPayment = parseFloat(DOM.downPayment.value) || 0;
-
-            DOM.grandTotal.textContent = `R$ ${grandTotal.toFixed(2)}`;
-            DOM.remainingTotal.textContent = `R$ ${(grandTotal - downPayment).toFixed(2)}`;
-        };
         
         const fileToBase64 = (file) => new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -1442,55 +1444,6 @@
                 });
                 contentContainer.appendChild(detalhadoTpl);
             }
-        };
-
-        const createFinancialRow = (partId, name, quantity, priceGroup) => {
-            const finTpl = document.getElementById('financialRowTemplate').content.cloneNode(true);
-            const finItem = finTpl.querySelector('.financial-item');
-            finItem.dataset.partId = partId;
-            finItem.dataset.priceGroup = priceGroup;
-
-            finItem.querySelector('.financial-part-name > span:first-child').textContent = name;
-            const label = priceGroup === 'standard' ? '(Padrão)' : priceGroup === 'specific' ? '(Específico)' : '';
-            finItem.querySelector('.price-group-label').textContent = label;
-
-            finItem.querySelector('.financial-quantity').value = quantity;
-            finItem.querySelector('.financial-price').addEventListener('input', updateFinancials);
-
-            return finItem;
-        };
-
-        const renderFinancialSection = () => {
-            DOM.financialsContainer.innerHTML = '';
-            DOM.partsContainer.querySelectorAll('.part-item').forEach(partItem => {
-                const partId = partItem.dataset.partId;
-                const partName = partItem.querySelector('.part-type').value || `Peça ${partId}`;
-                const partType = partItem.dataset.partType;
-
-                if (partType === 'comum') {
-                    let standardQty = 0;
-                    partItem.querySelectorAll('.size-input').forEach(input => {
-                        standardQty += parseInt(input.value) || 0;
-                    });
-                    const specificQty = partItem.querySelectorAll('.specific-size-row').length;
-
-                    if (standardQty > 0) {
-                        const finRow = createFinancialRow(partId, partName, standardQty, 'standard');
-                        DOM.financialsContainer.appendChild(finRow);
-                    }
-                    if (specificQty > 0) {
-                        const finRow = createFinancialRow(partId, partName, specificQty, 'specific');
-                        DOM.financialsContainer.appendChild(finRow);
-                    }
-                } else {
-                    const totalQty = partItem.querySelectorAll('.detailed-item-row').length;
-                    if (totalQty > 0) {
-                       const finRow = createFinancialRow(partId, partName, totalQty, 'detailed');
-                       DOM.financialsContainer.appendChild(finRow);
-                    }
-                }
-            });
-            updateFinancials();
         };
 
         const collectFormData = () => {
@@ -1679,28 +1632,6 @@
             document.getElementById('deliveryDate').value = '';
             document.getElementById('discount').value = '';
             updateFinancials();
-        };
-
-        const showConfirmModal = (message, okText = "OK", cancelText = "Cancelar") => {
-            return new Promise((resolve) => {
-                DOM.confirmModalMessage.textContent = message;
-                DOM.confirmOkBtn.textContent = okText;
-                DOM.confirmCancelBtn.textContent = cancelText;
-                DOM.confirmModal.classList.remove('hidden');
-
-                const confirmListener = () => resolvePromise(true);
-                const cancelListener = () => resolvePromise(false);
-
-                const resolvePromise = (value) => {
-                    DOM.confirmModal.classList.add('hidden');
-                    DOM.confirmOkBtn.removeEventListener('click', confirmListener);
-                    DOM.confirmCancelBtn.removeEventListener('click', cancelListener);
-                    resolve(value);
-                };
-
-                DOM.confirmOkBtn.addEventListener('click', confirmListener, { once: true });
-                DOM.confirmCancelBtn.addEventListener('click', cancelListener, { once: true });
-            });
         };
 
         const deleteOrder = async (id) => {
@@ -2125,7 +2056,7 @@
                 showInfoModal("Não foi possível gerar o PDF do recibo.");
             }
         };
-        
+
         // 4. Funções Financeiras (renderFinanceDashboard, saveTransaction, etc.)
         const setupTransactionsListener = () => {
             if (!transactionsCollection) return;
@@ -2290,10 +2221,307 @@
 
             DOM.transactionsList.innerHTML = transactionsHtml || `<tr><td colspan="6" class="text-center py-4 text-gray-500">${searchTerm ? 'Nenhum lançamento encontrado para a busca.' : 'Nenhum lançamento encontrado para este período.'}</td></tr>`;
         };
+        
+        const updateSourceSelectionUI = (selectedSource) => {
+             DOM.transactionSourceContainer.querySelectorAll('.source-selector').forEach(btn => {
+                const isSelected = btn.dataset.source === selectedSource;
+                btn.classList.toggle('active', isSelected);
+                const iconPlaceholder = btn.querySelector('.icon-placeholder');
+                iconPlaceholder.innerHTML = isSelected ? CHECK_ICON_SVG : '';
+            });
+        };
+
+        const saveTransaction = async () => {
+            const selectedSourceEl = DOM.transactionSourceContainer.querySelector('.source-selector.active');
+            if (!selectedSourceEl) {
+                showInfoModal("Por favor, selecione a Origem do lançamento (Banco ou Caixa).");
+                return;
+            }
+
+            const transactionId = document.getElementById('transactionId').value;
+            const transactionData = {
+                date: document.getElementById('transactionDate').value,
+                description: document.getElementById('transactionDescription').value,
+                amount: parseFloat(document.getElementById('transactionAmount').value),
+                type: document.getElementById('transactionType').value,
+                category: document.getElementById('transactionCategory').value.trim(),
+                source: selectedSourceEl.dataset.source
+            };
+
+            if (!transactionData.date || !transactionData.description || isNaN(transactionData.amount) || transactionData.amount <= 0) {
+                showInfoModal("Por favor, preencha todos os campos com valores válidos.");
+                return;
+            }
+
+            if (transactionData.type === 'income') {
+                transactionData.status = document.querySelector('input[name="transactionStatus"]:checked').value;
+            } else {
+                transactionData.status = 'pago';
+            }
+
+            try {
+                if (transactionId) {
+                    await updateDoc(doc(transactionsCollection, transactionId), transactionData);
+                } else {
+                    await addDoc(transactionsCollection, transactionData);
+                }
+                DOM.transactionForm.reset();
+                DOM.transactionModal.classList.add('hidden');
+            } catch (error) {
+                console.error("Erro ao salvar lançamento:", error);
+                showInfoModal("Não foi possível salvar o lançamento.");
+            }
+        };
+
+        const editTransaction = (id) => {
+            const transaction = allTransactions.find(t => t.id === id);
+            if (!transaction) return;
+
+            document.getElementById('transactionId').value = transaction.id;
+            document.getElementById('transactionDate').value = transaction.date;
+            document.getElementById('transactionDescription').value = transaction.description;
+            document.getElementById('transactionAmount').value = transaction.amount;
+            document.getElementById('transactionType').value = transaction.type;
+            document.getElementById('transactionCategory').value = transaction.category || '';
+            
+            updateSourceSelectionUI(transaction.source || 'banco');
+
+            const statusContainer = document.getElementById('transactionStatusContainer');
+            if (transaction.type === 'income') {
+                statusContainer.classList.remove('hidden');
+                document.querySelector(`input[name="transactionStatus"][value="${transaction.status || 'pago'}"]`).checked = true;
+            } else {
+                statusContainer.classList.add('hidden');
+            }
+
+            const title = transaction.type === 'income' ? 'Editar Entrada' : 'Editar Despesa';
+            document.getElementById('transactionModalTitle').textContent = title;
+            DOM.transactionModal.classList.remove('hidden');
+        };
+
+        const deleteTransaction = async (id) => {
+            const confirmed = await showConfirmModal(
+                "Tem certeza que deseja excluir este lançamento? Esta ação não pode ser desfeita.",
+                "Excluir", "Cancelar"
+            );
+            if (confirmed) {
+                try {
+                    await deleteDoc(doc(transactionsCollection, id));
+                } catch (error) {
+                    console.error("Erro ao excluir lançamento:", error);
+                    showInfoModal("Não foi possível excluir o lançamento.");
+                }
+            }
+        };
+
+        const markTransactionAsPaid = async (id) => {
+             const transactionRef = doc(transactionsCollection, id);
+                 try {
+                     await updateDoc(transactionRef, {
+                         status: 'pago',
+                         date: new Date().toISOString().split('T')[0]
+                     });
+            } catch(error) {
+                     console.error("Erro ao marcar como recebido:", error);
+                     showInfoModal("Não foi possível atualizar o lançamento.");
+            }
+        };
+        
+        const triggerAutoBackupIfNeeded = () => {
+            const storageKey = `lastAutoBackupTimestamp_${userCompanyId}`;
+            const lastBackupTimestamp = localStorage.getItem(storageKey);
+
+            if (!lastBackupTimestamp) {
+                return; // Não faz nada se nunca houve um backup
+            }
+
+            const now = Date.now();
+            const sevenDaysInMillis = 7 * 24 * 60 * 60 * 1000;
+            
+            if ((now - parseInt(lastBackupTimestamp)) > sevenDaysInMillis) {
+                showInfoModal("Backup semi-automático iniciado. Seu último backup foi há mais de 7 dias.");
+                handleBackup();
+            }
+        };
+        
+        const checkBackupReminder = () => {
+            const storageKey = `lastAutoBackupTimestamp_${userCompanyId}`;
+            const lastBackupTimestamp = localStorage.getItem(storageKey);
+            if (!lastBackupTimestamp) {
+                return;
+            }
+
+            const now = Date.now();
+            const sevenDaysInMillis = 7 * 24 * 60 * 60 * 1000;
+            
+            if ((now - parseInt(lastBackupTimestamp)) > sevenDaysInMillis) {
+                DOM.backupReminderBanner.classList.remove('hidden');
+            }
+        };
+        
+        const copyTransactionsToClipboard = async () => {
+            const filterValue = DOM.periodFilter.value;
+            const now = new Date();
+            let startDate, endDate;
+
+            if (filterValue === 'custom') {
+                startDate = DOM.startDateInput.value ? new Date(DOM.startDateInput.value + 'T00:00:00') : null;
+                endDate = DOM.endDateInput.value ? new Date(DOM.endDateInput.value + 'T23:59:59') : null;
+            } else {
+                const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                const endOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+                const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+                const startOfThisYear = new Date(now.getFullYear(), 0, 1);
+                const endOfThisYear = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+
+                switch(filterValue) {
+                    case 'thisMonth': startDate = startOfThisMonth; endDate = endOfThisMonth; break;
+                    case 'lastMonth': startDate = startOfLastMonth; endDate = endOfLastMonth; break;
+                    case 'thisYear': startDate = startOfThisYear; endDate = endOfThisYear; break;
+                }
+            }
+            
+            const transactionsToExport = allTransactions.filter(t => {
+                const transactionDate = new Date(t.date + 'T00:00:00');
+                if (startDate && endDate) return transactionDate >= startDate && transactionDate <= endDate;
+                if(startDate && !endDate) return transactionDate >= startDate;
+                if(!startDate && endDate) return transactionDate <= endDate;
+                return true;
+            });
+
+            if (transactionsToExport.length === 0) {
+                showInfoModal("Não há dados para copiar no período selecionado.");
+                return;
+            }
+
+            const headers = ['Data', 'Descricao', 'Categoria', 'Valor', 'Tipo', 'Status', 'Origem'];
+            let reportString = headers.join('\t') + '\n';
+
+            for (const t of transactionsToExport) {
+                const value = t.type === 'income' ? t.amount : -t.amount;
+                const formattedDate = new Date(t.date + 'T00:00:00').toLocaleDateString('pt-BR');
+                
+                const description = (t.description || '').replace(/\s+/g, ' ');
+                const category = (t.category || '').replace(/\s+/g, ' ');
+
+                const typeInPortuguese = t.type === 'income' ? 'Receita' : 'Despesa';
+                const statusInPortuguese = t.status === 'a_receber' ? 'A Receber' : 'Pago';
+                const sourceInPortuguese = t.source === 'caixa' ? 'Caixa' : 'Banco';
+
+                const row = [
+                    formattedDate,
+                    description,
+                    category,
+                    value.toFixed(2).replace('.',','),
+                    typeInPortuguese,
+                    statusInPortuguese,
+                    sourceInPortuguese
+                ];
+                reportString += row.join('\t') + '\n';
+            }
+
+            try {
+                await navigator.clipboard.writeText(reportString);
+                showInfoModal("Relatório copiado! Agora é só colar (Ctrl+V) em sua planilha.");
+            } catch (err) {
+                console.error('Falha ao copiar relatório: ', err);
+                showInfoModal("Não foi possível copiar o relatório. Verifique as permissões do navegador.");
+            }
+        };
+
+        const handleSaveInitialBalance = async () => {
+            const newBalance = parseFloat(DOM.initialBalanceInput.value);
+            if (isNaN(newBalance)) {
+                showInfoModal("Por favor, insira um valor numérico válido.");
+                return;
+            }
+            try {
+                await updateDoc(companyRef, {
+                    bankBalanceConfig: {
+                        initialBalance: newBalance
+                    }
+                });
+                userBankBalanceConfig.initialBalance = newBalance;
+                renderFinanceDashboard();
+                DOM.initialBalanceModal.classList.add('hidden');
+                showInfoModal("Saldo inicial salvo com sucesso!");
+            } catch (error) {
+                console.error("Erro ao salvar saldo inicial:", error);
+                showInfoModal("Não foi possível salvar o saldo inicial.");
+            }
+        };
+
+        const createFinancialRow = (partId, name, quantity, priceGroup) => {
+            const finTpl = document.getElementById('financialRowTemplate').content.cloneNode(true);
+            const finItem = finTpl.querySelector('.financial-item');
+            finItem.dataset.partId = partId;
+            finItem.dataset.priceGroup = priceGroup;
+
+            finItem.querySelector('.financial-part-name > span:first-child').textContent = name;
+            const label = priceGroup === 'standard' ? '(Padrão)' : priceGroup === 'specific' ? '(Específico)' : '';
+            finItem.querySelector('.price-group-label').textContent = label;
+
+            finItem.querySelector('.financial-quantity').value = quantity;
+            finItem.querySelector('.financial-price').addEventListener('input', updateFinancials);
+
+            return finItem;
+        };
+
+        const renderFinancialSection = () => {
+            DOM.financialsContainer.innerHTML = '';
+            DOM.partsContainer.querySelectorAll('.part-item').forEach(partItem => {
+                const partId = partItem.dataset.partId;
+                const partName = partItem.querySelector('.part-type').value || `Peça ${partId}`;
+                const partType = partItem.dataset.partType;
+
+                if (partType === 'comum') {
+                    let standardQty = 0;
+                    partItem.querySelectorAll('.size-input').forEach(input => {
+                        standardQty += parseInt(input.value) || 0;
+                    });
+                    const specificQty = partItem.querySelectorAll('.specific-size-row').length;
+
+                    if (standardQty > 0) {
+                        const finRow = createFinancialRow(partId, partName, standardQty, 'standard');
+                        DOM.financialsContainer.appendChild(finRow);
+                    }
+                    if (specificQty > 0) {
+                        const finRow = createFinancialRow(partId, partName, specificQty, 'specific');
+                        DOM.financialsContainer.appendChild(finRow);
+                    }
+                } else {
+                    const totalQty = partItem.querySelectorAll('.detailed-item-row').length;
+                    if (totalQty > 0) {
+                       const finRow = createFinancialRow(partId, partName, totalQty, 'detailed');
+                       DOM.financialsContainer.appendChild(finRow);
+                    }
+                }
+            });
+            updateFinancials();
+        };
+
+        const updateFinancials = () => {
+            let subtotal = 0;
+            DOM.financialsContainer.querySelectorAll('.financial-item').forEach(item => {
+                const quantity = parseFloat(item.querySelector('.financial-quantity').value) || 0;
+                const price = parseFloat(item.querySelector('.financial-price').value) || 0;
+                const itemSubtotal = quantity * price;
+                item.querySelector('.financial-subtotal').textContent = `R$ ${itemSubtotal.toFixed(2)}`;
+                subtotal += itemSubtotal;
+            });
+
+            const discount = parseFloat(DOM.discount.value) || 0;
+            const grandTotal = Math.max(0, subtotal - discount);
+            const downPayment = parseFloat(DOM.downPayment.value) || 0;
+
+            DOM.grandTotal.textContent = `R$ ${grandTotal.toFixed(2)}`;
+            DOM.remainingTotal.textContent = `R$ ${(grandTotal - downPayment).toFixed(2)}`;
+        };
         // 5. Event Listeners
         window.addEventListener('load', () => {
             initializeFirebase();
-            handleCookieConsent(); // Verifica o consentimento de cookies ao carregar
+            handleCookieConsent(); // NOVO: Verifica o consentimento de cookies ao carregar a página
         });
         
         DOM.loginForm.addEventListener('submit', handleLogin);
@@ -2496,10 +2724,10 @@
         DOM.saveBalanceBtn.addEventListener('click', handleSaveInitialBalance);
         DOM.cancelBalanceBtn.addEventListener('click', () => DOM.initialBalanceModal.classList.add('hidden'));
 
-        // NOVO EVENT LISTENER PARA O BANNER DE COOKIES
-        DOM.cookieConsentBtn.addEventListener('click', () => {
+        // NOVO: Event Listener para o botão de aceitar cookies
+        DOM.cookieAcceptBtn.addEventListener('click', () => {
             localStorage.setItem('cookieConsent', 'true');
-            DOM.cookieConsentBanner.classList.add('hidden');
+            DOM.cookieBanner.classList.add('hidden');
         });
 
         // ATALHOS DE TECLADO MELHORADOS (ENTER E ESCAPE)
